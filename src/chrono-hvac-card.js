@@ -2,9 +2,16 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.0.15';
+const CARD_VERSION = '1.0.16';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.0.16: Fix real-time updates — the hass setter never called requestUpdate(),
+//          so Lit never re-rendered on incoming HA state pushes (hass is
+//          deliberately kept out of static properties to avoid deep-checking the
+//          whole hass object, but the setter must manually trigger an update).
+//          The card previously only re-rendered when the user interacted with it
+//          directly (drag/click touching the reactive _dragTarget/_dragTemp
+//          properties), never from external state changes.
 // v1.0.15: Card border-radius 28px -> 12px (user correction). Dial center label+
 //          temperature block (.ch-info) moved up 16px via transform. Feature
 //          button row (.ch-controls-container) moved down 8px via margin-top.
@@ -614,6 +621,7 @@ class ChronoHvacCard extends LitElement {
 
   set hass(hass) {
     this._hass = hass;
+    this.requestUpdate();
   }
 
   get hass() {
