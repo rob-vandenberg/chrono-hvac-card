@@ -2,9 +2,29 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '0.0.13';
+const CARD_VERSION = '0.0.14';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v0.0.14: Fix title font entirely — DevTools inspection (h1.card-header, 24px)
+//          revealed the real name text is NOT hui-thermostat-card.ts's own
+//          <p class="title">, it's ha-card's own built-in `header` property
+//          (renders <h1 class="card-header">, font-size var(--ha-font-size-2xl)
+//          default, verified from ha-card.ts source). Now using .header=${name}
+//          directly on <ha-card> — guaranteed identical since it's the literal
+//          same generated element, not a re-implementation.
+//          ha-card padding changed 16px->0 (verified: hui-thermostat-card.ts's own
+//          ha-card uses padding:0, since the internal header supplies its own
+//          padding); added a .content wrapper div carrying the 16px
+//          padding/16px gap that used to live on ha-card itself.
+//          .more-info rebuilt as a direct child of ha-card (required for its
+//          position:absolute to anchor to ha-card's own position:relative, which
+//          only works for elements that land in ha-card's actual box, not nested
+//          inside our own wrapper divs) using the exact verified positioning CSS
+//          (position/top/right/inset-inline-*/border-radius/color/direction).
+//          [Disclosed, not verified] display:flex/align-items/padding:8px on
+//          .more-info are my own addition for clickable sizing, since native
+//          wraps a real <ha-icon-button> component (own internal sizing we don't
+//          have source for) while ours is a plain div+ha-icon.
 // v0.0.13: Fix .title font properties to match hui-thermostat-card.ts exactly:
 //          font-size var(--ha-font-size-l), line-height var(--ha-line-height-expanded),
 //          removed unverified font-weight:500 override (source has none, inherits
@@ -995,48 +1015,48 @@ class ChronoHvacCard extends LitElement {
     const showMoreInfo = this._config.show_more_info_button;
 
     return html`
-      <ha-card style="--ch-state-color:${stateColor};--ch-low-color:${lowColor};--ch-high-color:${highColor}">
-        ${name || showMoreInfo ? html`
-          <div class="header">
-            ${name ? html`<p class="title">${name}</p>` : ''}
-            ${showMoreInfo ? html`
-              <div class="more-info" @click=${this._handleMoreInfo}>
-                <ha-icon icon="mdi:dots-vertical"></ha-icon>
-              </div>
-            ` : ''}
+      <ha-card
+        .header=${name}
+        style="--ch-state-color:${stateColor};--ch-low-color:${lowColor};--ch-high-color:${highColor}"
+      >
+        ${showMoreInfo ? html`
+          <div class="more-info" @click=${this._handleMoreInfo}>
+            <ha-icon icon="mdi:dots-vertical"></ha-icon>
           </div>
         ` : ''}
 
-        ${showTemp || showHumidity ? html`
-          <div class="readouts ${showTemp && showHumidity ? '' : 'single'}">
-            ${showTemp ? html`
-              <div class="readout">
-                <div class="readout-label">Current temperature</div>
-                <div class="readout-value">${attrs.current_temperature}°C</div>
-              </div>
-            ` : ''}
-            ${showHumidity ? html`
-              <div class="readout">
-                <div class="readout-label">Current humidity</div>
-                <div class="readout-value">${attrs.current_humidity}%</div>
-              </div>
-            ` : ''}
-          </div>
-        ` : ''}
-
-        <div class="dial-wrapper" @pointerdown=${this._onPointerDown}>
-          ${this._renderDial(stateObj)}
-          ${this._renderCenter(stateObj)}
-          ${this._renderStepButtons(stateObj)}
-        </div>
-
-        ${featureRows.length ? html`
-          <div class="ch-controls-container">
-            <div class="${scrollClass}">
-              ${featureRows}
+        <div class="content">
+          ${showTemp || showHumidity ? html`
+            <div class="readouts ${showTemp && showHumidity ? '' : 'single'}">
+              ${showTemp ? html`
+                <div class="readout">
+                  <div class="readout-label">Current temperature</div>
+                  <div class="readout-value">${attrs.current_temperature}°C</div>
+                </div>
+              ` : ''}
+              ${showHumidity ? html`
+                <div class="readout">
+                  <div class="readout-label">Current humidity</div>
+                  <div class="readout-value">${attrs.current_humidity}%</div>
+                </div>
+              ` : ''}
             </div>
+          ` : ''}
+
+          <div class="dial-wrapper" @pointerdown=${this._onPointerDown}>
+            ${this._renderDial(stateObj)}
+            ${this._renderCenter(stateObj)}
+            ${this._renderStepButtons(stateObj)}
           </div>
-        ` : ''}
+
+          ${featureRows.length ? html`
+            <div class="ch-controls-container">
+              <div class="${scrollClass}">
+                ${featureRows}
+              </div>
+            </div>
+          ` : ''}
+        </div>
       </ha-card>
     `;
   }
@@ -1047,30 +1067,30 @@ class ChronoHvacCard extends LitElement {
       font-family: var(--ha-font-family-body, inherit);
     }
     ha-card {
-      padding: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
+      padding: 0;
       background: var(--card-background-color, #1a1a1a);
       color: var(--primary-text-color, #fff);
       border-radius: 28px;
     }
-    .header {
+    .content {
       display: flex;
-      align-items: center;
-      justify-content: flex-end;
-    }
-    .title {
-      margin: 0;
-      margin-right: auto;
-      font-size: var(--ha-font-size-l);
-      line-height: var(--ha-line-height-expanded);
+      flex-direction: column;
+      gap: 16px;
+      padding: 16px;
     }
     .more-info {
+      position: absolute;
       cursor: pointer;
-      color: var(--secondary-text-color, #999);
+      top: 0;
+      right: 0;
+      inset-inline-end: 0px;
+      inset-inline-start: initial;
+      border-radius: var(--ha-border-radius-pill);
+      color: var(--secondary-text-color);
+      direction: var(--direction);
       display: flex;
       align-items: center;
+      padding: 8px;
     }
     .warning {
       color: var(--error-color, #db4437);
