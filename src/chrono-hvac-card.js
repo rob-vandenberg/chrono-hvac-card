@@ -2,9 +2,21 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '0.0.7';
+const CARD_VERSION = '0.0.8';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v0.0.8: Preset/Fan/Swing mode icons now use HA's real icon resolution instead
+//         of a generic dot fallback. Ported directly from verified HA source
+//         (src/data/icons.ts: attributeIcon/getIconFromTranslations/
+//         getIconFromRange) — same WebSocket data ('frontend/get_icons') and
+//         same platform-translation-key + entity-component-icon lookup order
+//         ha-attribute-icon itself uses. Uses hass.callWS (standard on any
+//         custom card) in place of the internal-only callWS util, and
+//         hass.config.components as a simplified load-check in place of the
+//         source's isComponentLoaded/atLeastVersion version gate (that gate
+//         exists only to protect against very old HA servers lacking this WS
+//         command; omitting it doesn't change output on any current HA version).
+//         Results cached per platform/domain, same as source.
 // v0.0.7: Add show_entity_name_fallback config key (default true) controlling
 //         whether the header falls back to the entity's friendly name when the
 //         Name field is blank. Editor: Name field + new toggle combined into a
@@ -94,6 +106,86 @@ function chHvacModeIcon(mode) {
 const CH_HVAC_MODES_ORDER = ['auto', 'heat_cool', 'heat', 'cool', 'dry', 'fan_only', 'off'];
 function chCompareHvacModes(a, b) {
   return CH_HVAC_MODES_ORDER.indexOf(a) - CH_HVAC_MODES_ORDER.indexOf(b);
+}
+
+// ─── Attribute icon resolution ─────────────────────────────────────────────────
+// Ported directly from HA source (src/data/icons.ts: attributeIcon,
+// getIconFromTranslations, getIconFromRange) — this is the exact mechanism
+// ha-attribute-icon uses for Preset/Fan/Swing mode icons. Uses hass.callWS in
+// place of the internal callWS util, and hass.config.components as a simplified
+// stand-in for the source's isComponentLoaded/atLeastVersion gate.
+const _chPlatformIconsCache = {};   // platform -> Promise<PlatformIcons|undefined>
+const _chComponentIconsCache = {};  // domain -> Promise<ComponentIcons|undefined>
+
+function chGetIconFromRange(value, range) {
+  const keys = Object.keys(range).map(Number).filter((k) => !isNaN(k)).sort((a, b) => a - b);
+  if (!keys.length || value < keys[0]) return undefined;
+  let selected = keys[0];
+  for (const k of keys) {
+    if (value >= k) selected = k; else break;
+  }
+  return range[String(selected)];
+}
+
+function chGetIconFromTranslations(state, translations) {
+  if (!translations) return undefined;
+  if (state !== undefined && state !== null && translations.state?.[state]) {
+    return translations.state[state];
+  }
+  if (state !== undefined && translations.range && !isNaN(Number(state))) {
+    return chGetIconFromRange(Number(state), translations.range) ?? translations.default;
+  }
+  return translations.default;
+}
+
+async function chGetPlatformIcons(hass, platform) {
+  if (platform in _chPlatformIconsCache) return _chPlatformIconsCache[platform];
+  if (!hass.config?.components?.includes(platform)) return undefined;
+  const p = hass.callWS({ type: 'frontend/get_icons', category: 'entity', integration: platform })
+    .then((res) => res?.resources?.[platform])
+    .catch(() => undefined);
+  _chPlatformIconsCache[platform] = p;
+  return p;
+}
+
+async function chGetComponentIcons(hass, domain) {
+  if (domain in _chComponentIconsCache) return _chComponentIconsCache[domain];
+  if (!hass.config?.components?.includes(domain)) return undefined;
+  const p = hass.callWS({ type: 'frontend/get_icons', category: 'entity_component' })
+    .then((res) => res?.resources?.[domain])
+    .catch(() => undefined);
+  _chComponentIconsCache[domain] = p;
+  return p;
+}
+
+async function chAttributeIcon(hass, stateObj, attribute, attributeValue) {
+  const domain = stateObj.entity_id.split('.')[0];
+  const deviceClass = stateObj.attributes.device_class;
+  const entity = hass.entities?.[stateObj.entity_id];
+  const platform = entity?.platform;
+  const translationKey = entity?.translation_key;
+  const value = attributeValue ?? stateObj.attributes[attribute];
+
+  let icon;
+  if (translationKey && platform) {
+    const platformIcons = await chGetPlatformIcons(hass, platform);
+    if (platformIcons) {
+      icon = chGetIconFromTranslations(
+        value,
+        platformIcons[domain]?.[translationKey]?.state_attributes?.[attribute]
+      );
+    }
+  }
+  if (!icon) {
+    const componentIcons = await chGetComponentIcons(hass, domain);
+    if (componentIcons) {
+      const translations =
+        (deviceClass && componentIcons[deviceClass]?.state_attributes?.[attribute]) ||
+        componentIcons._?.state_attributes?.[attribute];
+      icon = chGetIconFromTranslations(value, translations);
+    }
+  }
+  return icon;
 }
 
 // ─── Default Configuration ────────────────────────────────────────────────────
@@ -350,6 +442,7 @@ class ChronoHvacCard extends LitElement {
     this._dragTemp = null;
     this._boundPointerMove = this._onPointerMove.bind(this);
     this._boundPointerUp = this._onPointerUp.bind(this);
+    this._attrIconCache = {};
   }
 
   set hass(hass) {
@@ -518,8 +611,18 @@ class ChronoHvacCard extends LitElement {
   }
 
   // ─── Render ────────────────────────────────────────────────────────────────
-  _renderDotIcon() {
-    return html`<ha-icon icon="mdi:circle-small"></ha-icon>`;
+  _getAttributeIcon(attribute, value) {
+    const key = `${attribute}:${value}`;
+    if (key in this._attrIconCache) {
+      return this._attrIconCache[key];
+    }
+    this._attrIconCache[key] = undefined; // mark in-flight, avoid duplicate fetches
+    const stateObj = this._stateObj;
+    chAttributeIcon(this.hass, stateObj, attribute, value).then((icon) => {
+      this._attrIconCache[key] = icon || null;
+      this.requestUpdate();
+    });
+    return undefined;
   }
 
   _renderModeRow(hvacModes, currentMode) {
@@ -543,20 +646,24 @@ class ChronoHvacCard extends LitElement {
     `;
   }
 
-  _renderAttributeRow(label, options, currentValue, onChange) {
+  _renderAttributeRow(label, attribute, options, currentValue, onChange) {
     const opts = options.map((v) => ({ value: v, label: CH_HVAC_MODE_LABELS[v] || chCapitalize(v) }));
+    const renderIcon = (value) => {
+      const icon = this._getAttributeIcon(attribute, value);
+      return html`<ha-icon icon=${icon || 'mdi:circle-small'}></ha-icon>`;
+    };
     return html`
       <ha-control-select-menu
         .label=${label}
         .value=${currentValue}
         .options=${opts}
-        .renderIcon=${this._renderDotIcon}
+        .renderIcon=${renderIcon}
         @wa-select=${(ev) => {
           const value = ev.detail?.item?.value;
           if (value !== undefined && value !== currentValue) onChange(value);
         }}
       >
-        <ha-icon slot="icon" icon="mdi:circle-small"></ha-icon>
+        <ha-icon slot="icon" icon=${this._getAttributeIcon(attribute, currentValue) || 'mdi:circle-small'}></ha-icon>
       </ha-control-select-menu>
     `;
   }
@@ -716,13 +823,13 @@ class ChronoHvacCard extends LitElement {
       featureRows.push(this._renderModeRow(hvacModes, mode));
     }
     if (this._config.show_preset_button && presetModes.length) {
-      featureRows.push(this._renderAttributeRow('Preset', presetModes, attrs.preset_mode, (v) => this._setPresetMode(v)));
+      featureRows.push(this._renderAttributeRow('Preset', 'preset_mode', presetModes, attrs.preset_mode, (v) => this._setPresetMode(v)));
     }
     if (this._config.show_fan_button && fanModes.length) {
-      featureRows.push(this._renderAttributeRow('Fan mode', fanModes, attrs.fan_mode, (v) => this._setFanMode(v)));
+      featureRows.push(this._renderAttributeRow('Fan mode', 'fan_mode', fanModes, attrs.fan_mode, (v) => this._setFanMode(v)));
     }
     if (this._config.show_swing_button && swingModes.length) {
-      featureRows.push(this._renderAttributeRow('Swing mode', swingModes, attrs.swing_mode, (v) => this._setSwingMode(v)));
+      featureRows.push(this._renderAttributeRow('Swing mode', 'swing_mode', swingModes, attrs.swing_mode, (v) => this._setSwingMode(v)));
     }
     const scrollClass = `ch-controls-scroll items-${featureRows.length}${featureRows.length >= 4 ? ' multiline' : ''}`;
 
