@@ -2,9 +2,13 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '0.0.1';
+const CARD_VERSION = '0.0.2';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v0.0.2: Replace ch-button-toggle-group (all-options segmented row) with
+//         ch-feature-picker (single button showing current icon+value, opens a
+//         dropdown popup listing all options — matches native HA behavior);
+//         Mode/Preset/Fan mode/Swing mode rows now laid out in a 2-column grid
 // v0.0.1: Initial release — dial with drag-to-set interaction (single and dual/heat_cool
 //         target modes), current temperature/humidity readouts, capability-detected
 //         Mode/Preset/Fan mode/Swing mode button rows read directly from entity
@@ -186,69 +190,132 @@ class ChTextfield extends LitElement {
 }
 customElements.define('ch-textfield', ChTextfield);
 
-// ─── ch-button-toggle-group ──────────────────────────────────────────────────
-// Segmented row of capability buttons (Mode / Preset / Fan mode / Swing mode).
-// Dispatches CustomEvent('change', { detail: { value } }) on selection.
-class ChButtonToggleGroup extends LitElement {
+// ─── ch-feature-picker ────────────────────────────────────────────────────────
+// Single button showing the current option's icon + row label + current value
+// (e.g. "Mode / Cool"). Clicking opens a dropdown popup listing all options
+// (icon + label each, current one highlighted); selecting one closes the
+// popup and fires 'change'. Matches native HA card-feature button behavior.
+class ChFeaturePicker extends LitElement {
   static properties = {
+    label:   { type: String },
     value:   { type: String },
     options: { type: Array },
     color:   { type: String },
+    _open:   { state: true },
   };
 
-  static styles = css`
-    :host { display: flex; flex-wrap: wrap; gap: 8px; }
-    button {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      height: 36px;
-      padding: 0 14px;
-      border: none;
-      border-radius: 18px;
-      cursor: pointer;
-      font-size: 13px;
-      font-weight: 500;
-      font-family: inherit;
-      background: var(--ch-chip-background, rgba(255, 255, 255, 0.08));
-      color: var(--primary-text-color, #e1e1e1);
-      transition: background 150ms ease;
+  constructor() {
+    super();
+    this._open = false;
+    this._boundOutsideClick = this._onOutsideClick.bind(this);
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    window.removeEventListener('pointerdown', this._boundOutsideClick, true);
+  }
+
+  _toggleOpen(ev) {
+    ev.stopPropagation();
+    this._open = !this._open;
+    if (this._open) {
+      window.addEventListener('pointerdown', this._boundOutsideClick, true);
+    } else {
+      window.removeEventListener('pointerdown', this._boundOutsideClick, true);
     }
-    button.active {
-      background: var(--ch-active-color, #2196f3);
-      color: #fff;
+  }
+
+  _onOutsideClick(ev) {
+    if (!this.contains(ev.target)) {
+      this._open = false;
+      window.removeEventListener('pointerdown', this._boundOutsideClick, true);
     }
-    button:hover:not(.active) {
-      background: var(--ch-chip-background-hover, rgba(255, 255, 255, 0.14));
-    }
-    ha-icon { --mdc-icon-size: 18px; }
-  `;
+  }
+
+  _select(value, ev) {
+    ev.stopPropagation();
+    this._open = false;
+    window.removeEventListener('pointerdown', this._boundOutsideClick, true);
+    this.dispatchEvent(new CustomEvent('change', { detail: { value }, bubbles: true, composed: true }));
+  }
 
   render() {
     const opts = this.options || [];
+    const current = opts.find((o) => o.value === this.value) || {};
     return html`
-      ${opts.map((opt) => {
-        const isActive = opt.value === this.value;
-        return html`
-          <button
-            class=${isActive ? 'active' : ''}
-            style=${isActive ? `background:${this.color || 'var(--ch-active-color,#2196f3)'}` : ''}
-            @click=${() => this._select(opt.value)}
-          >
-            ${opt.icon ? html`<ha-icon icon=${opt.icon}></ha-icon>` : ''}
-            ${opt.label}
-          </button>
-        `;
-      })}
+      <button class="picker-button" @click=${this._toggleOpen}>
+        <ha-icon icon=${current.icon || 'mdi:circle-small'}></ha-icon>
+        <div class="picker-text">
+          <span class="picker-label">${this.label}</span>
+          <span class="picker-value">${current.label || this.value}</span>
+        </div>
+      </button>
+      ${this._open ? html`
+        <div class="picker-popup">
+          ${opts.map((opt) => html`
+            <div
+              class="picker-option ${opt.value === this.value ? 'active' : ''}"
+              style=${opt.value === this.value ? `background:${this.color || 'var(--ch-active-color,#2196f3)'}` : ''}
+              @click=${(e) => this._select(opt.value, e)}
+            >
+              <ha-icon icon=${opt.icon || 'mdi:circle-small'}></ha-icon>
+              <span>${opt.label}</span>
+            </div>
+          `)}
+        </div>
+      ` : ''}
     `;
   }
 
-  _select(value) {
-    this.value = value;
-    this.dispatchEvent(new CustomEvent('change', { detail: { value }, bubbles: true, composed: true }));
-  }
+  static styles = css`
+    :host { position: relative; display: block; }
+    .picker-button {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      box-sizing: border-box;
+      padding: 10px 14px;
+      border: none;
+      border-radius: 12px;
+      background: var(--ch-chip-background, rgba(255, 255, 255, 0.06));
+      color: var(--primary-text-color, #e1e1e1);
+      cursor: pointer;
+      font-family: inherit;
+      text-align: left;
+    }
+    .picker-button:hover {
+      background: var(--ch-chip-background-hover, rgba(255, 255, 255, 0.1));
+    }
+    .picker-text { display: flex; flex-direction: column; }
+    .picker-label { font-size: 11px; color: var(--secondary-text-color, #999); }
+    .picker-value { font-size: 14px; font-weight: 600; }
+    .picker-popup {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      min-width: 180px;
+      background: var(--card-background-color, #1e1e1e);
+      border: 1px solid var(--divider-color, #444);
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+      z-index: 20;
+      overflow: hidden;
+    }
+    .picker-option {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .picker-option:hover:not(.active) { background: rgba(255, 255, 255, 0.08); }
+    .picker-option.active { color: #fff; }
+    ha-icon { --mdc-icon-size: 18px; }
+  `;
 }
-customElements.define('ch-button-toggle-group', ChButtonToggleGroup);
+customElements.define('ch-feature-picker', ChFeaturePicker);
 
 // ─── Editor ───────────────────────────────────────────────────────────────────
 class ChronoHvacCardEditor extends LitElement {
@@ -519,14 +586,12 @@ class ChronoHvacCard extends LitElement {
       icon: iconMap ? (iconMap[v] || 'mdi:circle-small') : 'mdi:circle-small',
     }));
     return html`
-      <div class="feature-row">
-        <div class="feature-label">${title}</div>
-        <ch-button-toggle-group
-          .options=${opts}
-          .value=${activeValue}
-          @change=${(e) => onChange(e.detail.value)}
-        ></ch-button-toggle-group>
-      </div>
+      <ch-feature-picker
+        label=${title}
+        .options=${opts}
+        .value=${activeValue}
+        @change=${(e) => onChange(e.detail.value)}
+      ></ch-feature-picker>
     `;
   }
 
@@ -710,18 +775,20 @@ class ChronoHvacCard extends LitElement {
 
         ${this._renderStepButtons(stateObj)}
 
-        ${this._config.show_mode_row && hvacModes.length > 1
-          ? this._renderButtonRow('Mode', hvacModes, mode, (v) => this._setHvacMode(v), CH_HVAC_MODE_ICONS)
-          : ''}
-        ${this._config.show_preset_row && presetModes.length
-          ? this._renderButtonRow('Preset', presetModes, attrs.preset_mode, (v) => this._setPresetMode(v))
-          : ''}
-        ${this._config.show_fan_row && fanModes.length
-          ? this._renderButtonRow('Fan mode', fanModes, attrs.fan_mode, (v) => this._setFanMode(v))
-          : ''}
-        ${this._config.show_swing_row && swingModes.length
-          ? this._renderButtonRow('Swing mode', swingModes, attrs.swing_mode, (v) => this._setSwingMode(v))
-          : ''}
+        <div class="feature-grid">
+          ${this._config.show_mode_row && hvacModes.length > 1
+            ? this._renderButtonRow('Mode', hvacModes, mode, (v) => this._setHvacMode(v), CH_HVAC_MODE_ICONS)
+            : ''}
+          ${this._config.show_preset_row && presetModes.length
+            ? this._renderButtonRow('Preset', presetModes, attrs.preset_mode, (v) => this._setPresetMode(v))
+            : ''}
+          ${this._config.show_fan_row && fanModes.length
+            ? this._renderButtonRow('Fan mode', fanModes, attrs.fan_mode, (v) => this._setFanMode(v))
+            : ''}
+          ${this._config.show_swing_row && swingModes.length
+            ? this._renderButtonRow('Swing mode', swingModes, attrs.swing_mode, (v) => this._setSwingMode(v))
+            : ''}
+        </div>
       </ha-card>
     `;
   }
@@ -864,14 +931,10 @@ class ChronoHvacCard extends LitElement {
     .step-buttons button:hover {
       background: rgba(255, 255, 255, 0.08);
     }
-    .feature-row {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-    .feature-label {
-      font-size: 12px;
-      color: var(--secondary-text-color, #999);
+    .feature-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
     }
   `;
 }
