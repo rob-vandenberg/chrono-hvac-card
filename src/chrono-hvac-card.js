@@ -2,9 +2,10 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.0.16';
+const CARD_VERSION = '1.0.17';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.0.17: Change show_more_info_button default from true to false.
 // v1.0.16: Fix real-time updates — the hass setter never called requestUpdate(),
 //          so Lit never re-rendered on incoming HA state pushes (hass is
 //          deliberately kept out of static properties to avoid deep-checking the
@@ -299,7 +300,7 @@ const DEFAULT_CONFIG = {
   show_entity_name_fallback:  true,
   show_current_temperature:   true,
   show_current_humidity:      true,
-  show_more_info_button:      true,
+  show_more_info_button:      false,
   show_mode_button:           true,
   show_preset_button:         true,
   show_fan_button:            true,
