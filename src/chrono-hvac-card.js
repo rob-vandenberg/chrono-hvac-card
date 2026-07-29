@@ -2,9 +2,16 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '0.0.9';
+const CARD_VERSION = '0.0.10';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v0.0.10: Fix .header justify-content (space-between -> flex-end) so the
+//          more-info button stays pinned top-right when the name is hidden,
+//          instead of jumping to the left as the only flex child. Fix the name
+//          row toggle vertical alignment: give it an invisible label spacer
+//          matching the real "Name (optional)" label's height, plus a 40px
+//          control row matching the text input's height, so the switch centers
+//          on the input box itself rather than the whole label+input block.
 // v0.0.9: Add show_more_info_button config key (default true) with editor toggle.
 //         Display section in editor no longer gated on temperature/humidity
 //         capability existing, since the more-info toggle is always available.
@@ -387,7 +394,12 @@ class ChronoHvacCardEditor extends LitElement {
 
         <div class="name-toggle-grid">
           ${chTextField('Name (optional)', c.name, (e) => this._valueChanged('name', e))}
-          <ha-switch .checked=${c.show_entity_name_fallback} @change=${(e) => this._valueChanged('show_entity_name_fallback', e)}></ha-switch>
+          <div class="toggle-spacer">
+            <span class="spacer-label">&nbsp;</span>
+            <span class="spacer-control">
+              <ha-switch .checked=${c.show_entity_name_fallback} @change=${(e) => this._valueChanged('show_entity_name_fallback', e)}></ha-switch>
+            </span>
+          </div>
         </div>
 
         <div class="section-title">Display</div>
@@ -412,7 +424,21 @@ class ChronoHvacCardEditor extends LitElement {
       display: grid;
       grid-template-columns: 1fr auto;
       gap: 12px;
-      align-items: end;
+      align-items: start;
+    }
+    .toggle-spacer {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .toggle-spacer .spacer-label {
+      font-size: 13px;
+      visibility: hidden;
+    }
+    .toggle-spacer .spacer-control {
+      height: 40px;
+      display: flex;
+      align-items: center;
     }
     .section-title {
       font-size: 12px;
@@ -904,10 +930,11 @@ class ChronoHvacCard extends LitElement {
     .header {
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      justify-content: flex-end;
     }
     .title {
       margin: 0;
+      margin-right: auto;
       font-size: 16px;
       font-weight: 500;
     }
