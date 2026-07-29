@@ -2,9 +2,15 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '0.0.6';
+const CARD_VERSION = '0.0.7';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v0.0.7: Add show_entity_name_fallback config key (default true) controlling
+//         whether the header falls back to the entity's friendly name when the
+//         Name field is blank. Editor: Name field + new toggle combined into a
+//         single grid row (.name-toggle-grid, same named-grid-class method used
+//         throughout chrono-compass-card.js), toggle right-aligned to match the
+//         switches in the rows below. No label on the toggle itself.
 // v0.0.6: Editor now only shows a toggle for a capability the selected entity
 //         actually supports (current temperature/humidity, Mode/Preset/Fan/Swing)
 //         instead of always showing all of them; renamed config keys
@@ -94,6 +100,7 @@ function chCompareHvacModes(a, b) {
 const DEFAULT_CONFIG = {
   entity:                     '',
   name:                       '',
+  show_entity_name_fallback:  true,
   show_current_temperature:   true,
   show_current_humidity:      true,
   show_mode_button:           true,
@@ -280,7 +287,10 @@ class ChronoHvacCardEditor extends LitElement {
           @value-changed=${(e) => this._valueChanged('entity', { detail: { value: e.detail.value } })}
         ></ha-entity-picker>
 
-        ${chTextField('Name (optional)', c.name, (e) => this._valueChanged('name', e))}
+        <div class="name-toggle-grid">
+          ${chTextField('Name (optional)', c.name, (e) => this._valueChanged('name', e))}
+          <ha-switch .checked=${c.show_entity_name_fallback} @change=${(e) => this._valueChanged('show_entity_name_fallback', e)}></ha-switch>
+        </div>
 
         ${hasCurrentTemperature || hasCurrentHumidity ? html`
           <div class="section-title">Display</div>
@@ -301,6 +311,12 @@ class ChronoHvacCardEditor extends LitElement {
 
   static styles = css`
     .editor { display: flex; flex-direction: column; gap: 12px; padding: 8px 0; }
+    .name-toggle-grid {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      align-items: end;
+    }
     .section-title {
       font-size: 12px;
       font-weight: 600;
@@ -692,7 +708,8 @@ class ChronoHvacCard extends LitElement {
     const fanModes = attrs.fan_modes || [];
     const swingModes = attrs.swing_modes || [];
 
-    const name = this._config.name || this.hass.states[this._config.entity]?.attributes?.friendly_name || '';
+    const friendlyName = this.hass.states[this._config.entity]?.attributes?.friendly_name || '';
+    const name = this._config.name || (this._config.show_entity_name_fallback ? friendlyName : '');
 
     const featureRows = [];
     if (this._config.show_mode_button && hvacModes.length > 1) {
