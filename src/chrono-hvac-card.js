@@ -2,9 +2,19 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '0.0.14';
+const CARD_VERSION = '1.0.15';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.0.15: Card border-radius 28px -> 12px (user correction). Dial center label+
+//          temperature block (.ch-info) moved up 16px via transform. Feature
+//          button row (.ch-controls-container) moved down 8px via margin-top.
+//          Target dot fixed: ch-target-border now gets the arc's color (matching
+//          native's cascade, where .value/.low/.high override the base white on
+//          .target-border, leaving only the inner .target circle pure white) —
+//          previously both layers were flat white with no color, unlike native's
+//          colored-ring + white-center look.
+//          Border-radius/shift values are user-measured corrections against the
+//          native card, not re-derived from source.
 // v0.0.14: Fix title font entirely — DevTools inspection (h1.card-header, 24px)
 //          revealed the real name text is NOT hui-thermostat-card.ts's own
 //          <p class="title">, it's ha-card's own built-in `header` property
@@ -868,7 +878,7 @@ class ChronoHvacCard extends LitElement {
         <path class="ch-arc ch-arc-colored" style="stroke:${colorVar}" d=${path} stroke-dasharray=${coloredArc[0]} stroke-dashoffset=${coloredArc[1]}></path>
         ${activeArc ? svg`<path class="ch-arc ch-arc-active" style="stroke:${colorVar}" d=${path} stroke-dasharray=${activeArc[0]} stroke-dashoffset=${activeArc[1]}></path>` : ''}
         ${targetCircle ? svg`
-          <path class="ch-target-border" d=${path} stroke-dasharray=${targetCircle[0]} stroke-dashoffset=${targetCircle[1]}></path>
+          <path class="ch-target-border" style="stroke:${colorVar}" d=${path} stroke-dasharray=${targetCircle[0]} stroke-dashoffset=${targetCircle[1]}></path>
           <path class="ch-target" d=${path} stroke-dasharray=${targetCircle[0]} stroke-dashoffset=${targetCircle[1]}></path>
         ` : ''}
       </g>
@@ -1070,7 +1080,7 @@ class ChronoHvacCard extends LitElement {
       padding: 0;
       background: var(--card-background-color, #1a1a1a);
       color: var(--primary-text-color, #fff);
-      border-radius: 28px;
+      border-radius: 12px;
     }
     .content {
       display: flex;
@@ -1177,6 +1187,7 @@ class ChronoHvacCard extends LitElement {
       flex-direction: column;
       align-items: center;
       justify-content: center;
+      transform: translateY(-16px);
       pointer-events: none;
       gap: var(--ha-space-2, 4px);
     }
@@ -1220,6 +1231,7 @@ class ChronoHvacCard extends LitElement {
     .ch-controls-container {
       display: flex;
       flex-direction: row;
+      margin-top: 8px;
       justify-content: center;
     }
     .ch-controls-scroll {
