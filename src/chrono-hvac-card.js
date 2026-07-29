@@ -2,9 +2,46 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '0.0.10';
+const CARD_VERSION = '0.0.11';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v0.0.11: Full dial rewrite against verified HA source (ha-control-circular-slider.ts,
+//          state-control-circular-slider-style.ts, ha-big-number.ts,
+//          ha-outlined-icon-button.ts, state_color.ts, svg-arc.ts, css-variables.ts):
+//          - Real geometry: 270° sweep, 145 radius, 320 viewBox, 135° group rotation
+//            (previous 300°/210° values were an unverified approximation)
+//          - Target dot is now the real technique: a zero-length round-linecap
+//            stroke segment positioned via stroke-dasharray, not a drawn circle
+//          - Added the current-temperature marker on the ring (8px, primary-text-color,
+//            50% opacity) — previously missing entirely
+//          - Arc now layers clear/colored/active segments exactly as source does,
+//            instead of a single flat fill path
+//          - Colors now resolve via the real CSS custom property chain
+//          (--state-climate-<mode>-color etc, ported chStateColorCss/
+//          chDomainColorProperties/chComputeCssVariable) instead of hardcoded hex —
+//          matches any HA theme automatically since we run in the same frontend.
+//          [Note] the active/inactive fallback tier of this chain uses a
+//          simplified heuristic (mode !== 'off') since state_active.ts was not
+//          verified this session; low practical impact since HA themes define
+//          --state-climate-<mode>-color directly for standard hvac modes.
+//          - Center number now uses the real <ha-big-number> element (exact font
+//            sizing/weight/decimal handling) instead of manual whole/decimal split
+//          - +/- controls now use the real <ha-outlined-icon-button> element,
+//            48x48px, positioned absolutely inside the dial (bottom:10px) instead
+//            of a separate custom circle-button row below the dial
+//          - Drag interaction ported from the real _getPercentageFromEvent /
+//            _findActiveSlider formulas instead of re-derived angle math
+//          - Dual (heat_cool) mode always colors low=heat-color/high=cool-color
+//            regardless of current mode, matching source; added persistent
+//            _selectedRangeTarget so the step buttons act on whichever handle was
+//            last dragged (default 'low')
+//          [Simplification, disclosed] per-arc secondary current-temperature
+//          marker (the subtle --clear-background-color one drawn again inside
+//          each arc group) was not ported — only the single shared top-level
+//          marker was, which is the visually significant one users identified.
+//          [Simplification, disclosed] responsive breakpoint sizing (xs/sm/md/lg
+//          font-size swaps tied to container width) was not ported — out of
+//          scope for this pass, current sizing is fixed.
 // v0.0.10: Fix .header justify-content (space-between -> flex-end) so the
 //          more-info button stays pinned top-right when the name is hidden,
 //          instead of jumping to the left as the only flex child. Fix the name
@@ -72,22 +109,22 @@ const CARD_VERSION = '0.0.10';
 //         full visual editor with per-row visibility toggles
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const CH_ARC_START = 210;              // degrees, 0 = top, clockwise positive
-const CH_ARC_SWEEP = 300;              // degrees of travel; gap of 60° centered at bottom
+// Verified from HA source (src/components/ha-control-circular-slider.ts)
+const CH_ARC_MAX_ANGLE = 270;                                   // local sweep, degrees
+const CH_ARC_ROTATE = 360 - CH_ARC_MAX_ANGLE / 2 - 90;           // group rotation, = 135
+const CH_ARC_RADIUS = 145;
+const CH_ARC_VIEWBOX = 320;                                      // svg viewBox is 0 0 320 320
+const CH_ARC_CENTER = 160;                                       // viewBox/2, translate(160 160)
+
+// Verified from HA source (src/state-control/climate/ha-state-control-climate-temperature.ts)
+const CH_SLIDER_MODES = {
+  auto: 'full', cool: 'end', dry: 'full', fan_only: 'full',
+  heat: 'start', heat_cool: 'full', off: 'full',
+};
+
 const CH_DEFAULT_MIN_TEMP = 7;
 const CH_DEFAULT_MAX_TEMP = 35;
 const CH_DEFAULT_STEP = 0.5;
-
-const CH_MODE_COLORS = {
-  heat:      '#ff8100',
-  cool:      '#2196f3',
-  heat_cool: '#7c4dff',
-  auto:      '#43a047',
-  dry:       '#ffc107',
-  fan_only:  '#00bcd4',
-  off:       '#8a8a8a',
-  idle:      '#8a8a8a',
-};
 
 const CH_HVAC_MODE_LABELS = {
   off:       'Off',
@@ -229,33 +266,83 @@ function chParseNumber(raw) {
   return isNaN(n) ? null : n;
 }
 
-function chPolarToCartesian(cx, cy, r, angleDeg) {
-  const rad = (angleDeg * Math.PI) / 180;
-  return {
-    x: cx + r * Math.sin(rad),
-    y: cy - r * Math.cos(rad),
-  };
+// Ported directly from HA source (src/resources/svg-arc.ts)
+function chSvgArc(opts) {
+  const { x, y, r, start, end, rotate = 0 } = opts;
+  const t1 = (start / 180) * Math.PI;
+  const t2 = (end / 180) * Math.PI;
+  const delta = (t2 - t1) % (2 * Math.PI);
+  const phi = (rotate / 180) * Math.PI;
+  const cosPhi = Math.cos(phi);
+  const sinPhi = Math.sin(phi);
+  const rot = ([vx, vy]) => [cosPhi * vx - sinPhi * vy, sinPhi * vx + cosPhi * vy];
+  const [sX, sY] = rot([r * Math.cos(t1), r * Math.sin(t1)]).map((v, i) => v + (i === 0 ? x : y));
+  const [eX, eY] = rot([r * Math.cos(t1 + delta), r * Math.sin(t1 + delta)]).map((v, i) => v + (i === 0 ? x : y));
+  const fA = delta > Math.PI ? 1 : 0;
+  const fS = delta > 0 ? 1 : 0;
+  return ['M', sX, sY, 'A', r, r, (phi / (2 * Math.PI)) * 360, fA, fS, eX, eY].join(' ');
 }
 
-function chDescribeArc(cx, cy, r, startAngle, endAngle) {
-  if (endAngle <= startAngle) return '';
-  const start = chPolarToCartesian(cx, cy, r, startAngle);
-  const end = chPolarToCartesian(cx, cy, r, endAngle);
-  const sweep = endAngle - startAngle;
-  const largeArcFlag = sweep <= 180 ? 0 : 1;
-  return `M ${start.x} ${start.y} A ${r} ${r} 0 ${largeArcFlag} 1 ${end.x} ${end.y}`;
+function chClamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
 }
 
-function chAngleForTemp(temp, min, max) {
-  const ratio = Math.min(1, Math.max(0, (temp - min) / (max - min)));
-  return CH_ARC_START + ratio * CH_ARC_SWEEP;
+// Ported directly from HA source (src/components/ha-control-circular-slider.ts:
+// _valueToPercentage / _strokeDashArc / _strokeCircleDashArc)
+function chValueToPercentage(value, min, max) {
+  return (chClamp(value, min, max) - min) / (max - min);
 }
 
-function chTempForAngle(angle, min, max, step) {
-  const ratio = (angle - CH_ARC_START) / CH_ARC_SWEEP;
-  let temp = min + ratio * (max - min);
-  temp = Math.round(temp / step) * step;
-  return Math.min(max, Math.max(min, temp));
+function chStrokeDashArc(from, to, min, max) {
+  const start = chValueToPercentage(from, min, max);
+  const end = chValueToPercentage(to, min, max);
+  const track = (CH_ARC_RADIUS * 2 * Math.PI * CH_ARC_MAX_ANGLE) / 360;
+  const arc = Math.max((end - start) * track, 0);
+  const arcOffset = start * track - 0.5;
+  return [`${arc} ${track - arc}`, `-${arcOffset}`];
+}
+
+function chStrokeCircleDashArc(value, min, max) {
+  return chStrokeDashArc(value, value, min, max);
+}
+
+// Ported directly from HA source (src/resources/css-variables.ts: computeCssVariable)
+function chComputeCssVariable(props) {
+  if (Array.isArray(props)) {
+    return props.reduceRight((str, variable) => `var(${variable}${str ? `, ${str}` : ''})`, undefined);
+  }
+  return `var(${props})`;
+}
+
+function chSlugify(str) {
+  return String(str).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+}
+
+// Ported from HA source (src/common/entity/state_color.ts: domainColorProperties).
+// [Note] the "active" flag here uses a simplified heuristic (mode !== 'off') since
+// state_active.ts (the real stateActive() source) was not verified in this session.
+// This tier is only reached as a fallback if HA's theme has no
+// --state-climate-<mode>-color defined for the specific mode, which standard HA
+// themes always do for hvac modes — so this heuristic should rarely, if ever, matter.
+function chDomainColorProperties(domain, stateObj, state, active) {
+  const stateKey = chSlugify(state);
+  const activeKey = active ? 'active' : 'inactive';
+  const deviceClass = stateObj.attributes.device_class;
+  const props = [];
+  if (deviceClass) props.push(`--state-${domain}-${deviceClass}-${stateKey}-color`);
+  props.push(
+    `--state-${domain}-${stateKey}-color`,
+    `--state-${domain}-${activeKey}-color`,
+    `--state-${activeKey}-color`
+  );
+  return props;
+}
+
+function chStateColorCss(stateObj, overrideState) {
+  const compareState = overrideState !== undefined ? overrideState : stateObj.state;
+  if (compareState === 'unavailable') return 'var(--state-unavailable-color)';
+  const active = compareState !== 'off';
+  return chComputeCssVariable(chDomainColorProperties('climate', stateObj, compareState, active));
 }
 
 // ─── Editor Field Helpers ──────────────────────────────────────────────────────
@@ -474,6 +561,7 @@ class ChronoHvacCard extends LitElement {
     this._boundPointerMove = this._onPointerMove.bind(this);
     this._boundPointerUp = this._onPointerUp.bind(this);
     this._attrIconCache = {};
+    this._selectedRangeTarget = 'low';
   }
 
   set hass(hass) {
@@ -565,18 +653,28 @@ class ChronoHvacCard extends LitElement {
   }
 
   // ─── Drag interaction ─────────────────────────────────────────────────────
-  _angleFromPointer(clientX, clientY, rect) {
+  // Ported directly from HA source (ha-control-circular-slider.ts:
+  // xy2polar / rad2deg / _getPercentageFromEvent) rather than re-derived geometry.
+  _percentageFromPointer(clientX, clientY, rect) {
     const cx = rect.left + rect.width / 2;
     const cy = rect.top + rect.height / 2;
-    const dx = clientX - cx;
-    const dy = clientY - cy;
-    let deg = (Math.atan2(dx, -dy) * 180) / Math.PI;
-    if (deg < 0) deg += 360;
-    const gapEndRaw = (CH_ARC_START + CH_ARC_SWEEP) - 360;
-    if (deg <= gapEndRaw) deg += 360;
-    if (deg < CH_ARC_START) deg = CH_ARC_START;
-    if (deg > CH_ARC_START + CH_ARC_SWEEP) deg = CH_ARC_START + CH_ARC_SWEEP;
-    return deg;
+    const x = clientX - cx;
+    const y = clientY - cy;
+    const phi = Math.atan2(y, x);
+    const deg = (phi * 180) / Math.PI;
+    const offset = (360 - CH_ARC_MAX_ANGLE) / 2;
+    const angle = ((deg + offset - CH_ARC_ROTATE + 360) % 360) - offset;
+    return chClamp(angle / CH_ARC_MAX_ANGLE, 0, 1);
+  }
+
+  // Ported from HA source (_findActiveSlider): nearest-handle selection by value,
+  // not by angle.
+  _findActiveHandle(value, low, high, min, max) {
+    const lo = Math.max(low ?? min, min);
+    const hi = Math.min(high ?? max, max);
+    if (lo >= value) return 'low';
+    if (hi <= value) return 'high';
+    return Math.abs(value - lo) <= Math.abs(value - hi) ? 'low' : 'high';
   }
 
   _onPointerDown(ev) {
@@ -587,12 +685,11 @@ class ChronoHvacCard extends LitElement {
     const max = attrs.max_temp ?? CH_DEFAULT_MAX_TEMP;
     const isRange = attrs.target_temp_low !== undefined && attrs.target_temp_high !== undefined;
     const rect = ev.currentTarget.getBoundingClientRect();
-    const angle = this._angleFromPointer(ev.clientX, ev.clientY, rect);
+    const percentage = this._percentageFromPointer(ev.clientX, ev.clientY, rect);
+    const rawValue = min + percentage * (max - min);
 
     if (isRange) {
-      const lowAngle = chAngleForTemp(attrs.target_temp_low, min, max);
-      const highAngle = chAngleForTemp(attrs.target_temp_high, min, max);
-      this._dragTarget = Math.abs(angle - lowAngle) <= Math.abs(angle - highAngle) ? 'low' : 'high';
+      this._dragTarget = this._findActiveHandle(rawValue, attrs.target_temp_low, attrs.target_temp_high, min, max);
       this._dragTemp = { low: attrs.target_temp_low, high: attrs.target_temp_high };
     } else {
       this._dragTarget = 'single';
@@ -612,15 +709,16 @@ class ChronoHvacCard extends LitElement {
     const min = attrs.min_temp ?? CH_DEFAULT_MIN_TEMP;
     const max = attrs.max_temp ?? CH_DEFAULT_MAX_TEMP;
     const step = attrs.target_temp_step || CH_DEFAULT_STEP;
-    const angle = this._angleFromPointer(ev.clientX, ev.clientY, this._dialRect);
-    const temp = chTempForAngle(angle, min, max, step);
+    const percentage = this._percentageFromPointer(ev.clientX, ev.clientY, this._dialRect);
+    const rawValue = min + percentage * (max - min);
+    const stepped = chClamp(Math.round(rawValue / step) * step, min, max);
 
     if (this._dragTarget === 'single') {
-      this._dragTemp = { single: temp };
+      this._dragTemp = { single: stepped };
     } else if (this._dragTarget === 'low') {
-      this._dragTemp = { ...this._dragTemp, low: Math.min(temp, this._dragTemp.high) };
+      this._dragTemp = { ...this._dragTemp, low: Math.min(stepped, this._dragTemp.high) };
     } else if (this._dragTarget === 'high') {
-      this._dragTemp = { ...this._dragTemp, high: Math.max(temp, this._dragTemp.low) };
+      this._dragTemp = { ...this._dragTemp, high: Math.max(stepped, this._dragTemp.low) };
     }
     this.requestUpdate();
   }
@@ -630,6 +728,7 @@ class ChronoHvacCard extends LitElement {
     if (this._dragTarget === 'single') {
       this._callService('set_temperature', { temperature: this._dragTemp.single });
     } else {
+      this._selectedRangeTarget = this._dragTarget;
       this._callService('set_temperature', {
         target_temp_low: this._dragTemp.low,
         target_temp_high: this._dragTemp.high,
@@ -699,48 +798,78 @@ class ChronoHvacCard extends LitElement {
     `;
   }
 
+  // Ported from HA source (ha-control-circular-slider.ts: renderArc) — builds one
+  // arc's clear/colored/active layers plus its target dot (a zero-length,
+  // round-linecap stroke segment positioned via dasharray, not x/y coordinates).
+  _renderArcGroup(value, mode, min, max, current, colorVar) {
+    const path = chSvgArc({ x: 0, y: 0, start: 0, end: CH_ARC_MAX_ANGLE, r: CH_ARC_RADIUS });
+    const limit = mode === 'end' ? max : min;
+    const curr = current ?? limit;
+    const target = value ?? limit;
+
+    const showActive = mode === 'end' ? target <= curr : mode === 'start' ? curr <= target : false;
+    const showTarget = value != null;
+
+    const activeArc = showTarget
+      ? (showActive
+          ? (mode === 'end' ? chStrokeDashArc(target, curr, min, max) : chStrokeDashArc(curr, target, min, max))
+          : chStrokeCircleDashArc(target, min, max))
+      : null;
+
+    const coloredArc = mode === 'full'
+      ? chStrokeDashArc(min, max, min, max)
+      : mode === 'end'
+        ? chStrokeDashArc(target, limit, min, max)
+        : chStrokeDashArc(limit, target, min, max);
+
+    const targetCircle = showTarget ? chStrokeCircleDashArc(target, min, max) : null;
+
+    return svg`
+      <g>
+        <path class="ch-arc ch-arc-clear" d=${path} stroke-dasharray=${coloredArc[0]} stroke-dashoffset=${coloredArc[1]}></path>
+        <path class="ch-arc ch-arc-colored" style="stroke:${colorVar}" d=${path} stroke-dasharray=${coloredArc[0]} stroke-dashoffset=${coloredArc[1]}></path>
+        ${activeArc ? svg`<path class="ch-arc ch-arc-active" style="stroke:${colorVar}" d=${path} stroke-dasharray=${activeArc[0]} stroke-dashoffset=${activeArc[1]}></path>` : ''}
+        ${targetCircle ? svg`
+          <path class="ch-target-border" d=${path} stroke-dasharray=${targetCircle[0]} stroke-dashoffset=${targetCircle[1]}></path>
+          <path class="ch-target" d=${path} stroke-dasharray=${targetCircle[0]} stroke-dashoffset=${targetCircle[1]}></path>
+        ` : ''}
+      </g>
+    `;
+  }
+
   _renderDial(stateObj) {
     const attrs = stateObj.attributes;
     const mode = stateObj.state;
-    const action = attrs.hvac_action;
     const min = attrs.min_temp ?? CH_DEFAULT_MIN_TEMP;
     const max = attrs.max_temp ?? CH_DEFAULT_MAX_TEMP;
     const isRange = attrs.target_temp_low !== undefined && attrs.target_temp_high !== undefined;
-    const color = CH_MODE_COLORS[mode] || CH_MODE_COLORS.idle;
+    const current = attrs.current_temperature;
 
-    const cx = 100, cy = 100, r = 88;
-    const trackPath = chDescribeArc(cx, cy, r, CH_ARC_START, CH_ARC_START + CH_ARC_SWEEP);
+    const trackPath = chSvgArc({ x: 0, y: 0, start: 0, end: CH_ARC_MAX_ANGLE, r: CH_ARC_RADIUS });
+    const showCurrentMarker = current != null && current <= max && current >= min;
+    const currentMarker = showCurrentMarker ? chStrokeCircleDashArc(current, min, max) : null;
 
-    let fillPath = '';
-    let handles = [];
-
-    if (mode === 'off') {
-      // no fill, no handles
-    } else if (isRange) {
+    let arcs;
+    if (isRange) {
       const low = this._dragTarget ? this._dragTemp.low : attrs.target_temp_low;
       const high = this._dragTarget ? this._dragTemp.high : attrs.target_temp_high;
-      const lowAngle = chAngleForTemp(low, min, max);
-      const highAngle = chAngleForTemp(high, min, max);
-      fillPath = chDescribeArc(cx, cy, r, lowAngle, highAngle);
-      const lowPos = chPolarToCartesian(cx, cy, r, lowAngle);
-      const highPos = chPolarToCartesian(cx, cy, r, highAngle);
-      handles = [
-        { x: lowPos.x, y: lowPos.y },
-        { x: highPos.x, y: highPos.y },
-      ];
+      arcs = svg`
+        ${this._renderArcGroup(low, 'start', min, max, current, 'var(--ch-low-color)')}
+        ${this._renderArcGroup(high, 'end', min, max, current, 'var(--ch-high-color)')}
+      `;
     } else {
-      const target = this._dragTarget ? this._dragTemp.single : (attrs.temperature ?? min);
-      const targetAngle = chAngleForTemp(target, min, max);
-      fillPath = chDescribeArc(cx, cy, r, CH_ARC_START, targetAngle);
-      const pos = chPolarToCartesian(cx, cy, r, targetAngle);
-      handles = [{ x: pos.x, y: pos.y }];
+      const target = this._dragTarget ? this._dragTemp.single : attrs.temperature;
+      const sliderMode = CH_SLIDER_MODES[mode] || 'full';
+      arcs = this._renderArcGroup(target, sliderMode, min, max, current, 'var(--ch-state-color)');
     }
 
     return svg`
-      <svg viewBox="0 0 200 200" class="dial-svg">
-        <path class="dial-track" d=${trackPath}></path>
-        ${fillPath ? svg`<path class="dial-fill" d=${fillPath} style="stroke:${color}"></path>` : ''}
-        ${handles.map((h) => svg`<circle class="dial-handle" cx=${h.x} cy=${h.y} r="9" style="stroke:${color}"></circle>`)}
+      <svg viewBox="0 0 ${CH_ARC_VIEWBOX} ${CH_ARC_VIEWBOX}" class="dial-svg" overflow="visible">
+        <g transform="translate(${CH_ARC_CENTER} ${CH_ARC_CENTER}) rotate(${CH_ARC_ROTATE})">
+          <path class="ch-track-bg" d=${trackPath}></path>
+          ${currentMarker ? svg`<path class="ch-current-marker" d=${trackPath} stroke-dasharray=${currentMarker[0]} stroke-dashoffset=${currentMarker[1]}></path>` : ''}
+          ${arcs}
+        </g>
       </svg>
     `;
   }
@@ -751,46 +880,30 @@ class ChronoHvacCard extends LitElement {
     const action = attrs.hvac_action;
     const isRange = attrs.target_temp_low !== undefined && attrs.target_temp_high !== undefined;
 
-    let label;
-    if (action === 'idle') label = 'Idle';
-    else if (mode === 'off') label = 'Off';
-    else label = CH_HVAC_MODE_LABELS[mode] || chCapitalize(mode);
-
-    if (mode === 'off') {
-      return html`
-        <div class="center">
-          <div class="center-label">${label}</div>
-        </div>
-      `;
-    }
+    const label = (action && action !== 'off')
+      ? chCapitalize(action)
+      : (CH_HVAC_MODE_LABELS[mode] || chCapitalize(mode));
 
     if (isRange) {
       const low = this._dragTarget ? this._dragTemp.low : attrs.target_temp_low;
       const high = this._dragTarget ? this._dragTemp.high : attrs.target_temp_high;
       return html`
-        <div class="center">
-          <div class="center-label">${label}</div>
-          <div class="center-temp-range">
-            <span class="center-temp">${low}°</span>
-            <span class="center-temp-sep">–</span>
-            <span class="center-temp">${high}°</span>
+        <div class="ch-info">
+          <p class="ch-label">${label}</p>
+          <div class="ch-dual">
+            <ha-big-number .value=${low} unit="°C" unit-position="top"></ha-big-number>
+            <span>–</span>
+            <ha-big-number .value=${high} unit="°C" unit-position="top"></ha-big-number>
           </div>
         </div>
       `;
     }
 
     const target = this._dragTarget ? this._dragTemp.single : attrs.temperature;
-    const [whole, decimal] = String(target ?? '').split('.');
     return html`
-      <div class="center">
-        <div class="center-label">${label}</div>
-        <div class="center-temp-single">
-          <span class="whole">${whole}</span>
-          <span class="frac">
-            <span class="deg">°C</span>
-            ${decimal !== undefined ? html`<span class="dec">,${decimal}</span>` : ''}
-          </span>
-        </div>
+      <div class="ch-info">
+        <p class="ch-label">${label}</p>
+        ${target != null ? html`<ha-big-number .value=${target} unit="°C" unit-position="top"></ha-big-number>` : ''}
       </div>
     `;
   }
@@ -800,28 +913,16 @@ class ChronoHvacCard extends LitElement {
     const mode = stateObj.state;
     if (mode === 'off') return html``;
     const isRange = attrs.target_temp_low !== undefined && attrs.target_temp_high !== undefined;
-
-    if (isRange) {
-      return html`
-        <div class="step-buttons">
-          <div class="step-pair">
-            <button @click=${() => this._step(-1, 'low')}>−</button>
-            <span class="step-label">Low</span>
-            <button @click=${() => this._step(1, 'low')}>+</button>
-          </div>
-          <div class="step-pair">
-            <button @click=${() => this._step(-1, 'high')}>−</button>
-            <span class="step-label">High</span>
-            <button @click=${() => this._step(1, 'high')}>+</button>
-          </div>
-        </div>
-      `;
-    }
+    const target = isRange ? (this._selectedRangeTarget || 'low') : 'single';
 
     return html`
       <div class="step-buttons">
-        <button @click=${() => this._step(-1, 'single')}>−</button>
-        <button @click=${() => this._step(1, 'single')}>+</button>
+        <ha-outlined-icon-button @click=${() => this._step(-1, target)}>
+          <ha-icon icon="mdi:minus"></ha-icon>
+        </ha-outlined-icon-button>
+        <ha-outlined-icon-button @click=${() => this._step(1, target)}>
+          <ha-icon icon="mdi:plus"></ha-icon>
+        </ha-outlined-icon-button>
       </div>
     `;
   }
@@ -839,7 +940,9 @@ class ChronoHvacCard extends LitElement {
 
     const attrs = stateObj.attributes;
     const mode = stateObj.state;
-    const color = CH_MODE_COLORS[mode] || CH_MODE_COLORS.idle;
+    const stateColor = chStateColorCss(stateObj);
+    const lowColor = chStateColorCss(stateObj, 'heat');
+    const highColor = chStateColorCss(stateObj, 'cool');
 
     const hvacModes = attrs.hvac_modes || [];
     const presetModes = attrs.preset_modes || [];
@@ -869,7 +972,7 @@ class ChronoHvacCard extends LitElement {
     const showMoreInfo = this._config.show_more_info_button;
 
     return html`
-      <ha-card style="--ch-active-color:${color}">
+      <ha-card style="--ch-state-color:${stateColor};--ch-low-color:${lowColor};--ch-high-color:${highColor}">
         ${name || showMoreInfo ? html`
           <div class="header">
             ${name ? html`<p class="title">${name}</p>` : ''}
@@ -901,9 +1004,8 @@ class ChronoHvacCard extends LitElement {
         <div class="dial-wrapper" @pointerdown=${this._onPointerDown}>
           ${this._renderDial(stateObj)}
           ${this._renderCenter(stateObj)}
+          ${this._renderStepButtons(stateObj)}
         </div>
-
-        ${this._renderStepButtons(stateObj)}
 
         ${featureRows.length ? html`
           <div class="ch-controls-container">
@@ -978,87 +1080,92 @@ class ChronoHvacCard extends LitElement {
     .dial-svg {
       width: 100%;
       height: 100%;
-      overflow: visible;
+      display: block;
     }
-    .dial-track {
+    .dial-svg g { fill: none; }
+    .ch-track-bg {
       fill: none;
-      stroke: var(--divider-color, #333333);
-      stroke-width: 12;
+      stroke: var(--disabled-color);
+      opacity: 0.3;
       stroke-linecap: round;
+      stroke-width: 24px;
     }
-    .dial-fill {
+    .ch-current-marker {
       fill: none;
-      stroke-width: 12;
       stroke-linecap: round;
+      stroke-width: 8px;
+      stroke: var(--primary-text-color);
+      opacity: 0.5;
     }
-    .dial-handle {
-      fill: #ffffff;
-      stroke-width: 4;
+    .ch-arc {
+      fill: none;
+      stroke-linecap: round;
+      stroke-width: 24px;
     }
-    .center {
+    .ch-arc-clear {
+      stroke: var(--clear-background-color, var(--disabled-color));
+    }
+    .ch-arc-colored {
+      opacity: 0.5;
+    }
+    .ch-target {
+      fill: none;
+      stroke-linecap: round;
+      stroke-width: 18px;
+      stroke: white;
+    }
+    .ch-target-border {
+      fill: none;
+      stroke-linecap: round;
+      stroke-width: 24px;
+      stroke: white;
+    }
+    .ch-info {
       position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
+      top: 0; left: 0; right: 0; bottom: 0;
       display: flex;
       flex-direction: column;
       align-items: center;
-      text-align: center;
+      justify-content: center;
       pointer-events: none;
+      gap: var(--ha-space-2, 4px);
     }
-    .center-label {
-      font-size: 14px;
-      color: var(--secondary-text-color, #999);
-      margin-bottom: 4px;
+    .ch-info * { margin: 0; }
+    .ch-label {
+      font-size: var(--ha-font-size-l, 16px);
+      font-weight: var(--ha-font-weight-medium, 500);
+      text-align: center;
+      color: inherit;
     }
-    .center-temp-single {
+    ha-big-number {
+      color: var(--primary-text-color);
+    }
+    .ch-dual {
       display: flex;
-      align-items: flex-start;
-      font-size: 48px;
-      font-weight: 300;
-      line-height: 1;
-    }
-    .center-temp-single .frac {
-      display: flex;
-      flex-direction: column;
-      font-size: 16px;
-      margin-left: 2px;
-      margin-top: 2px;
-    }
-    .center-temp-range {
-      display: flex;
+      flex-direction: row;
       align-items: center;
-      gap: 6px;
-      font-size: 28px;
-      font-weight: 300;
+      gap: var(--ha-space-4, 12px);
+      font-size: 24px;
+      color: var(--secondary-text-color);
     }
     .step-buttons {
+      position: absolute;
+      bottom: 10px;
+      left: 0;
+      right: 0;
+      margin: 0 auto;
+      gap: var(--ha-space-6, 24px);
       display: flex;
+      flex-direction: row;
+      align-items: center;
       justify-content: center;
-      align-items: center;
-      gap: 24px;
+      pointer-events: none;
     }
-    .step-pair {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .step-label {
-      font-size: 12px;
-      color: var(--secondary-text-color, #999);
-    }
-    .step-buttons button {
-      width: 40px;
-      height: 40px;
-      border-radius: 50%;
-      border: 1px solid var(--divider-color, #444);
-      background: transparent;
-      color: var(--primary-text-color, #fff);
-      font-size: 20px;
-      cursor: pointer;
-    }
-    .step-buttons button:hover {
-      background: rgba(255, 255, 255, 0.08);
+    .step-buttons > * { pointer-events: auto; }
+    .step-buttons ha-outlined-icon-button {
+      --md-outlined-icon-button-container-width: 48px;
+      --md-outlined-icon-button-container-height: 48px;
+      --md-outlined-icon-button-icon-size: 24px;
     }
     .ch-controls-container {
       display: flex;
