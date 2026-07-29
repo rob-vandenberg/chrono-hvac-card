@@ -2,9 +2,14 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '0.0.8';
+const CARD_VERSION = '0.0.9';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v0.0.9: Add show_more_info_button config key (default true) with editor toggle.
+//         Display section in editor no longer gated on temperature/humidity
+//         capability existing, since the more-info toggle is always available.
+//         Header row (name + more-info button) is now omitted entirely when both
+//         are hidden, so the dial moves up to fill the freed space.
 // v0.0.8: Preset/Fan/Swing mode icons now use HA's real icon resolution instead
 //         of a generic dot fallback. Ported directly from verified HA source
 //         (src/data/icons.ts: attributeIcon/getIconFromTranslations/
@@ -195,6 +200,7 @@ const DEFAULT_CONFIG = {
   show_entity_name_fallback:  true,
   show_current_temperature:   true,
   show_current_humidity:      true,
+  show_more_info_button:      true,
   show_mode_button:           true,
   show_preset_button:         true,
   show_fan_button:            true,
@@ -384,11 +390,10 @@ class ChronoHvacCardEditor extends LitElement {
           <ha-switch .checked=${c.show_entity_name_fallback} @change=${(e) => this._valueChanged('show_entity_name_fallback', e)}></ha-switch>
         </div>
 
-        ${hasCurrentTemperature || hasCurrentHumidity ? html`
-          <div class="section-title">Display</div>
-          ${hasCurrentTemperature ? chToggleField('Show current temperature', c.show_current_temperature, (e) => this._valueChanged('show_current_temperature', e)) : ''}
-          ${hasCurrentHumidity ? chToggleField('Show current humidity', c.show_current_humidity, (e) => this._valueChanged('show_current_humidity', e)) : ''}
-        ` : ''}
+        <div class="section-title">Display</div>
+        ${chToggleField('Show more-info button', c.show_more_info_button, (e) => this._valueChanged('show_more_info_button', e))}
+        ${hasCurrentTemperature ? chToggleField('Show current temperature', c.show_current_temperature, (e) => this._valueChanged('show_current_temperature', e)) : ''}
+        ${hasCurrentHumidity ? chToggleField('Show current humidity', c.show_current_humidity, (e) => this._valueChanged('show_current_humidity', e)) : ''}
 
         ${hasMode || hasPreset || hasFan || hasSwing ? html`
           <div class="section-title">Buttons</div>
@@ -835,15 +840,20 @@ class ChronoHvacCard extends LitElement {
 
     const showTemp = this._config.show_current_temperature && attrs.current_temperature !== undefined;
     const showHumidity = this._config.show_current_humidity && attrs.current_humidity !== undefined;
+    const showMoreInfo = this._config.show_more_info_button;
 
     return html`
       <ha-card style="--ch-active-color:${color}">
-        <div class="header">
-          ${name ? html`<p class="title">${name}</p>` : ''}
-          <div class="more-info" @click=${this._handleMoreInfo}>
-            <ha-icon icon="mdi:dots-vertical"></ha-icon>
+        ${name || showMoreInfo ? html`
+          <div class="header">
+            ${name ? html`<p class="title">${name}</p>` : ''}
+            ${showMoreInfo ? html`
+              <div class="more-info" @click=${this._handleMoreInfo}>
+                <ha-icon icon="mdi:dots-vertical"></ha-icon>
+              </div>
+            ` : ''}
           </div>
-        </div>
+        ` : ''}
 
         ${showTemp || showHumidity ? html`
           <div class="readouts ${showTemp && showHumidity ? '' : 'single'}">
