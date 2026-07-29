@@ -2,9 +2,15 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '0.0.11';
+const CARD_VERSION = '0.0.12';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v0.0.12: Add font-family: var(--ha-font-family-body, inherit) to :host (verified
+//          variable name from ha-control-select-menu.ts). Dial center number now
+//          passes .formatOptions to ha-big-number (minimumFractionDigits/
+//          maximumFractionDigits computed from target_temp_step, exact port of
+//          ha-state-control-climate-temperature.ts _renderTarget) so whole-number
+//          targets show the correct decimal (e.g. "21,0") instead of dropping it.
 // v0.0.11: Full dial rewrite against verified HA source (ha-control-circular-slider.ts,
 //          state-control-circular-slider-style.ts, ha-big-number.ts,
 //          ha-outlined-icon-button.ts, state_color.ts, svg-arc.ts, css-variables.ts):
@@ -879,6 +885,11 @@ class ChronoHvacCard extends LitElement {
     const mode = stateObj.state;
     const action = attrs.hvac_action;
     const isRange = attrs.target_temp_low !== undefined && attrs.target_temp_high !== undefined;
+    const step = attrs.target_temp_step || CH_DEFAULT_STEP;
+
+    // Ported from HA source (ha-state-control-climate-temperature.ts: _renderTarget)
+    const digits = String(step).split('.')?.[1]?.length ?? 0;
+    const formatOptions = { minimumFractionDigits: digits, maximumFractionDigits: digits };
 
     const label = (action && action !== 'off')
       ? chCapitalize(action)
@@ -891,9 +902,9 @@ class ChronoHvacCard extends LitElement {
         <div class="ch-info">
           <p class="ch-label">${label}</p>
           <div class="ch-dual">
-            <ha-big-number .value=${low} unit="°C" unit-position="top"></ha-big-number>
+            <ha-big-number .value=${low} unit="°C" unit-position="top" .formatOptions=${formatOptions}></ha-big-number>
             <span>–</span>
-            <ha-big-number .value=${high} unit="°C" unit-position="top"></ha-big-number>
+            <ha-big-number .value=${high} unit="°C" unit-position="top" .formatOptions=${formatOptions}></ha-big-number>
           </div>
         </div>
       `;
@@ -903,7 +914,7 @@ class ChronoHvacCard extends LitElement {
     return html`
       <div class="ch-info">
         <p class="ch-label">${label}</p>
-        ${target != null ? html`<ha-big-number .value=${target} unit="°C" unit-position="top"></ha-big-number>` : ''}
+        ${target != null ? html`<ha-big-number .value=${target} unit="°C" unit-position="top" .formatOptions=${formatOptions}></ha-big-number>` : ''}
       </div>
     `;
   }
@@ -1019,7 +1030,10 @@ class ChronoHvacCard extends LitElement {
   }
 
   static styles = css`
-    :host { display: block; }
+    :host {
+      display: block;
+      font-family: var(--ha-font-family-body, inherit);
+    }
     ha-card {
       padding: 16px;
       display: flex;
