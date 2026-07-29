@@ -2,9 +2,17 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '0.0.3';
+const CARD_VERSION = '0.0.4';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v0.0.4: Replace hand-built ch-feature-picker with HA's real native
+//         <ha-control-select-menu> component (confirmed from HA frontend source:
+//         hui-mode-select-card-feature-base.ts) — guarantees identical rendering
+//         since it's the same element HA itself uses. Row icons now match source
+//         exactly (mdi:thermostat / mdi:tune-variant / mdi:fan / mdi:arrow-oscillating).
+//         Per source, Mode row shows no per-option icons; Preset/Fan/Swing rows
+//         use a generic dot icon fallback (native uses ha-attribute-icon, which
+//         depends on HA's internal icon-translation data we don't have access to)
 // v0.0.3: Add 28px border-radius to ha-card; reduce ch-feature-picker button
 //         padding/gap/font size — buttons were too wide/bulky compared to native
 // v0.0.2: Replace ch-button-toggle-group (all-options segmented row) with
@@ -43,16 +51,6 @@ const CH_HVAC_MODE_LABELS = {
   auto:      'Auto',
   dry:       'Dry',
   fan_only:  'Fan only',
-};
-
-const CH_HVAC_MODE_ICONS = {
-  off:       'mdi:power',
-  heat:      'mdi:fire',
-  cool:      'mdi:snowflake',
-  heat_cool: 'mdi:sun-snowflake-variant',
-  auto:      'mdi:autorenew',
-  dry:       'mdi:water-percent',
-  fan_only:  'mdi:fan',
 };
 
 // ─── Default Configuration ────────────────────────────────────────────────────
@@ -191,133 +189,6 @@ class ChTextfield extends LitElement {
   }
 }
 customElements.define('ch-textfield', ChTextfield);
-
-// ─── ch-feature-picker ────────────────────────────────────────────────────────
-// Single button showing the current option's icon + row label + current value
-// (e.g. "Mode / Cool"). Clicking opens a dropdown popup listing all options
-// (icon + label each, current one highlighted); selecting one closes the
-// popup and fires 'change'. Matches native HA card-feature button behavior.
-class ChFeaturePicker extends LitElement {
-  static properties = {
-    label:   { type: String },
-    value:   { type: String },
-    options: { type: Array },
-    color:   { type: String },
-    _open:   { state: true },
-  };
-
-  constructor() {
-    super();
-    this._open = false;
-    this._boundOutsideClick = this._onOutsideClick.bind(this);
-  }
-
-  disconnectedCallback() {
-    super.disconnectedCallback();
-    window.removeEventListener('pointerdown', this._boundOutsideClick, true);
-  }
-
-  _toggleOpen(ev) {
-    ev.stopPropagation();
-    this._open = !this._open;
-    if (this._open) {
-      window.addEventListener('pointerdown', this._boundOutsideClick, true);
-    } else {
-      window.removeEventListener('pointerdown', this._boundOutsideClick, true);
-    }
-  }
-
-  _onOutsideClick(ev) {
-    if (!this.contains(ev.target)) {
-      this._open = false;
-      window.removeEventListener('pointerdown', this._boundOutsideClick, true);
-    }
-  }
-
-  _select(value, ev) {
-    ev.stopPropagation();
-    this._open = false;
-    window.removeEventListener('pointerdown', this._boundOutsideClick, true);
-    this.dispatchEvent(new CustomEvent('change', { detail: { value }, bubbles: true, composed: true }));
-  }
-
-  render() {
-    const opts = this.options || [];
-    const current = opts.find((o) => o.value === this.value) || {};
-    return html`
-      <button class="picker-button" @click=${this._toggleOpen}>
-        <ha-icon icon=${current.icon || 'mdi:circle-small'}></ha-icon>
-        <div class="picker-text">
-          <span class="picker-label">${this.label}</span>
-          <span class="picker-value">${current.label || this.value}</span>
-        </div>
-      </button>
-      ${this._open ? html`
-        <div class="picker-popup">
-          ${opts.map((opt) => html`
-            <div
-              class="picker-option ${opt.value === this.value ? 'active' : ''}"
-              style=${opt.value === this.value ? `background:${this.color || 'var(--ch-active-color,#2196f3)'}` : ''}
-              @click=${(e) => this._select(opt.value, e)}
-            >
-              <ha-icon icon=${opt.icon || 'mdi:circle-small'}></ha-icon>
-              <span>${opt.label}</span>
-            </div>
-          `)}
-        </div>
-      ` : ''}
-    `;
-  }
-
-  static styles = css`
-    :host { position: relative; display: block; }
-    .picker-button {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      width: 100%;
-      box-sizing: border-box;
-      padding: 6px 10px;
-      border: none;
-      border-radius: 10px;
-      background: var(--ch-chip-background, rgba(255, 255, 255, 0.06));
-      color: var(--primary-text-color, #e1e1e1);
-      cursor: pointer;
-      font-family: inherit;
-      text-align: left;
-    }
-    .picker-button:hover {
-      background: var(--ch-chip-background-hover, rgba(255, 255, 255, 0.1));
-    }
-    .picker-text { display: flex; flex-direction: column; }
-    .picker-label { font-size: 10px; color: var(--secondary-text-color, #999); }
-    .picker-value { font-size: 12px; font-weight: 600; }
-    .picker-popup {
-      position: absolute;
-      top: calc(100% + 4px);
-      left: 0;
-      min-width: 180px;
-      background: var(--card-background-color, #1e1e1e);
-      border: 1px solid var(--divider-color, #444);
-      border-radius: 8px;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-      z-index: 20;
-      overflow: hidden;
-    }
-    .picker-option {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 10px 14px;
-      cursor: pointer;
-      font-size: 14px;
-    }
-    .picker-option:hover:not(.active) { background: rgba(255, 255, 255, 0.08); }
-    .picker-option.active { color: #fff; }
-    ha-icon { --mdc-icon-size: 16px; }
-  `;
-}
-customElements.define('ch-feature-picker', ChFeaturePicker);
 
 // ─── Editor ───────────────────────────────────────────────────────────────────
 class ChronoHvacCardEditor extends LitElement {
@@ -581,19 +452,30 @@ class ChronoHvacCard extends LitElement {
   }
 
   // ─── Render ────────────────────────────────────────────────────────────────
-  _renderButtonRow(title, options, activeValue, onChange, iconMap) {
+  _renderDotIcon() {
+    return html`<ha-icon icon="mdi:circle-small"></ha-icon>`;
+  }
+
+  _renderButtonRow(title, iconName, options, activeValue, onChange, showOptionIcons) {
     const opts = options.map((v) => ({
       value: v,
       label: CH_HVAC_MODE_LABELS[v] || chCapitalize(v),
-      icon: iconMap ? (iconMap[v] || 'mdi:circle-small') : 'mdi:circle-small',
     }));
     return html`
-      <ch-feature-picker
-        label=${title}
-        .options=${opts}
+      <ha-control-select-menu
+        show-arrow
+        hide-label
+        .label=${title}
         .value=${activeValue}
-        @change=${(e) => onChange(e.detail.value)}
-      ></ch-feature-picker>
+        .options=${opts}
+        .renderIcon=${showOptionIcons ? this._renderDotIcon : undefined}
+        @wa-select=${(ev) => {
+          const value = ev.detail?.value ?? ev.detail?.item?.value;
+          if (value !== undefined && value !== activeValue) onChange(value);
+        }}
+      >
+        <ha-icon slot="icon" icon=${iconName}></ha-icon>
+      </ha-control-select-menu>
     `;
   }
 
@@ -779,16 +661,16 @@ class ChronoHvacCard extends LitElement {
 
         <div class="feature-grid">
           ${this._config.show_mode_row && hvacModes.length > 1
-            ? this._renderButtonRow('Mode', hvacModes, mode, (v) => this._setHvacMode(v), CH_HVAC_MODE_ICONS)
+            ? this._renderButtonRow('Mode', 'mdi:thermostat', hvacModes, mode, (v) => this._setHvacMode(v), false)
             : ''}
           ${this._config.show_preset_row && presetModes.length
-            ? this._renderButtonRow('Preset', presetModes, attrs.preset_mode, (v) => this._setPresetMode(v))
+            ? this._renderButtonRow('Preset', 'mdi:tune-variant', presetModes, attrs.preset_mode, (v) => this._setPresetMode(v), true)
             : ''}
           ${this._config.show_fan_row && fanModes.length
-            ? this._renderButtonRow('Fan mode', fanModes, attrs.fan_mode, (v) => this._setFanMode(v))
+            ? this._renderButtonRow('Fan mode', 'mdi:fan', fanModes, attrs.fan_mode, (v) => this._setFanMode(v), true)
             : ''}
           ${this._config.show_swing_row && swingModes.length
-            ? this._renderButtonRow('Swing mode', swingModes, attrs.swing_mode, (v) => this._setSwingMode(v))
+            ? this._renderButtonRow('Swing mode', 'mdi:arrow-oscillating', swingModes, attrs.swing_mode, (v) => this._setSwingMode(v), true)
             : ''}
         </div>
       </ha-card>
