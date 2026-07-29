@@ -2,9 +2,11 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '0.0.2';
+const CARD_VERSION = '0.0.3';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v0.0.3: Add 28px border-radius to ha-card; reduce ch-feature-picker button
+//         padding/gap/font size — buttons were too wide/bulky compared to native
 // v0.0.2: Replace ch-button-toggle-group (all-options segmented row) with
 //         ch-feature-picker (single button showing current icon+value, opens a
 //         dropdown popup listing all options — matches native HA behavior);
@@ -272,12 +274,12 @@ class ChFeaturePicker extends LitElement {
     .picker-button {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 6px;
       width: 100%;
       box-sizing: border-box;
-      padding: 10px 14px;
+      padding: 6px 10px;
       border: none;
-      border-radius: 12px;
+      border-radius: 10px;
       background: var(--ch-chip-background, rgba(255, 255, 255, 0.06));
       color: var(--primary-text-color, #e1e1e1);
       cursor: pointer;
@@ -288,8 +290,8 @@ class ChFeaturePicker extends LitElement {
       background: var(--ch-chip-background-hover, rgba(255, 255, 255, 0.1));
     }
     .picker-text { display: flex; flex-direction: column; }
-    .picker-label { font-size: 11px; color: var(--secondary-text-color, #999); }
-    .picker-value { font-size: 14px; font-weight: 600; }
+    .picker-label { font-size: 10px; color: var(--secondary-text-color, #999); }
+    .picker-value { font-size: 12px; font-weight: 600; }
     .picker-popup {
       position: absolute;
       top: calc(100% + 4px);
@@ -312,7 +314,7 @@ class ChFeaturePicker extends LitElement {
     }
     .picker-option:hover:not(.active) { background: rgba(255, 255, 255, 0.08); }
     .picker-option.active { color: #fff; }
-    ha-icon { --mdc-icon-size: 18px; }
+    ha-icon { --mdc-icon-size: 16px; }
   `;
 }
 customElements.define('ch-feature-picker', ChFeaturePicker);
@@ -802,6 +804,7 @@ class ChronoHvacCard extends LitElement {
       gap: 16px;
       background: var(--card-background-color, #1a1a1a);
       color: var(--primary-text-color, #fff);
+      border-radius: 28px;
     }
     .header {
       display: flex;
