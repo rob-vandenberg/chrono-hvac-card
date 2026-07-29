@@ -2,9 +2,21 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '0.0.12';
+const CARD_VERSION = '0.0.13';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v0.0.13: Fix .title font properties to match hui-thermostat-card.ts exactly:
+//          font-size var(--ha-font-size-l), line-height var(--ha-line-height-expanded),
+//          removed unverified font-weight:500 override (source has none, inherits
+//          normal weight). Fix .readout-label/.readout-value to match
+//          more-info-climate.ts's .current .label/.current .value exactly:
+//          label now opacity:0.8, font-size var(--ha-font-size-m), line-height
+//          var(--ha-line-height-condensed), letter-spacing 0.4px, color
+//          var(--primary-text-color) (was hardcoded secondary-text-color/12px);
+//          value now font-size var(--ha-font-size-xl), font-weight
+//          var(--ha-font-weight-medium), line-height var(--ha-line-height-condensed)
+//          (was hardcoded 18px/500). Only font properties changed; layout/spacing
+//          properties (margin, padding, structure) left untouched per scope.
 // v0.0.12: Add font-family: var(--ha-font-family-body, inherit) to :host (verified
 //          variable name from ha-control-select-menu.ts). Dial center number now
 //          passes .formatOptions to ha-big-number (minimumFractionDigits/
@@ -1051,8 +1063,8 @@ class ChronoHvacCard extends LitElement {
     .title {
       margin: 0;
       margin-right: auto;
-      font-size: 16px;
-      font-weight: 500;
+      font-size: var(--ha-font-size-l);
+      line-height: var(--ha-line-height-expanded);
     }
     .more-info {
       cursor: pointer;
@@ -1074,12 +1086,16 @@ class ChronoHvacCard extends LitElement {
       justify-content: center;
     }
     .readout-label {
-      font-size: 12px;
-      color: var(--secondary-text-color, #999);
+      opacity: 0.8;
+      font-size: var(--ha-font-size-m);
+      line-height: var(--ha-line-height-condensed);
+      letter-spacing: 0.4px;
+      color: var(--primary-text-color);
     }
     .readout-value {
-      font-size: 18px;
-      font-weight: 500;
+      font-size: var(--ha-font-size-xl);
+      font-weight: var(--ha-font-weight-medium);
+      line-height: var(--ha-line-height-condensed);
       margin-top: 2px;
     }
     .dial-wrapper {
