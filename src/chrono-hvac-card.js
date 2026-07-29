@@ -2,9 +2,15 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '0.0.5';
+const CARD_VERSION = '0.0.6';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v0.0.6: Editor now only shows a toggle for a capability the selected entity
+//         actually supports (current temperature/humidity, Mode/Preset/Fan/Swing)
+//         instead of always showing all of them; renamed config keys
+//         show_*_row -> show_*_button and editor labels "row" -> "button" to
+//         match; single-readout layout now centers instead of using a half grid
+//         cell when only current temperature or only current humidity is shown
 // v0.0.5: Rebuilt Mode/Preset/Fan/Swing rows against verified HA source for the
 //         MORE-INFO DIALOG specifically (more-info-climate.ts), not the card-feature
 //         system used earlier — these are different component trees. Confirmed from
@@ -90,10 +96,10 @@ const DEFAULT_CONFIG = {
   name:                       '',
   show_current_temperature:   true,
   show_current_humidity:      true,
-  show_mode_row:              true,
-  show_preset_row:            true,
-  show_fan_row:               true,
-  show_swing_row:             true,
+  show_mode_button:           true,
+  show_preset_button:         true,
+  show_fan_button:            true,
+  show_swing_button:          true,
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -253,6 +259,15 @@ class ChronoHvacCardEditor extends LitElement {
   render() {
     if (!this._config || !this.hass) return html``;
     const c = this._config;
+    const stateObj = c.entity ? this.hass.states[c.entity] : undefined;
+    const attrs = stateObj?.attributes || {};
+
+    const hasCurrentTemperature = attrs.current_temperature !== undefined;
+    const hasCurrentHumidity = attrs.current_humidity !== undefined;
+    const hasMode = (attrs.hvac_modes || []).length > 1;
+    const hasPreset = (attrs.preset_modes || []).length > 0;
+    const hasFan = (attrs.fan_modes || []).length > 0;
+    const hasSwing = (attrs.swing_modes || []).length > 0;
 
     return html`
       <div class="editor">
@@ -267,15 +282,19 @@ class ChronoHvacCardEditor extends LitElement {
 
         ${chTextField('Name (optional)', c.name, (e) => this._valueChanged('name', e))}
 
-        <div class="section-title">Display</div>
-        ${chToggleField('Show current temperature', c.show_current_temperature, (e) => this._valueChanged('show_current_temperature', e))}
-        ${chToggleField('Show current humidity', c.show_current_humidity, (e) => this._valueChanged('show_current_humidity', e))}
+        ${hasCurrentTemperature || hasCurrentHumidity ? html`
+          <div class="section-title">Display</div>
+          ${hasCurrentTemperature ? chToggleField('Show current temperature', c.show_current_temperature, (e) => this._valueChanged('show_current_temperature', e)) : ''}
+          ${hasCurrentHumidity ? chToggleField('Show current humidity', c.show_current_humidity, (e) => this._valueChanged('show_current_humidity', e)) : ''}
+        ` : ''}
 
-        <div class="section-title">Button rows</div>
-        ${chToggleField('Show Mode row', c.show_mode_row, (e) => this._valueChanged('show_mode_row', e))}
-        ${chToggleField('Show Preset row', c.show_preset_row, (e) => this._valueChanged('show_preset_row', e))}
-        ${chToggleField('Show Fan mode row', c.show_fan_row, (e) => this._valueChanged('show_fan_row', e))}
-        ${chToggleField('Show Swing mode row', c.show_swing_row, (e) => this._valueChanged('show_swing_row', e))}
+        ${hasMode || hasPreset || hasFan || hasSwing ? html`
+          <div class="section-title">Buttons</div>
+          ${hasMode ? chToggleField('Show Mode button', c.show_mode_button, (e) => this._valueChanged('show_mode_button', e)) : ''}
+          ${hasPreset ? chToggleField('Show Preset button', c.show_preset_button, (e) => this._valueChanged('show_preset_button', e)) : ''}
+          ${hasFan ? chToggleField('Show Fan mode button', c.show_fan_button, (e) => this._valueChanged('show_fan_button', e)) : ''}
+          ${hasSwing ? chToggleField('Show Swing mode button', c.show_swing_button, (e) => this._valueChanged('show_swing_button', e)) : ''}
+        ` : ''}
       </div>
     `;
   }
@@ -676,19 +695,22 @@ class ChronoHvacCard extends LitElement {
     const name = this._config.name || this.hass.states[this._config.entity]?.attributes?.friendly_name || '';
 
     const featureRows = [];
-    if (this._config.show_mode_row && hvacModes.length > 1) {
+    if (this._config.show_mode_button && hvacModes.length > 1) {
       featureRows.push(this._renderModeRow(hvacModes, mode));
     }
-    if (this._config.show_preset_row && presetModes.length) {
+    if (this._config.show_preset_button && presetModes.length) {
       featureRows.push(this._renderAttributeRow('Preset', presetModes, attrs.preset_mode, (v) => this._setPresetMode(v)));
     }
-    if (this._config.show_fan_row && fanModes.length) {
+    if (this._config.show_fan_button && fanModes.length) {
       featureRows.push(this._renderAttributeRow('Fan mode', fanModes, attrs.fan_mode, (v) => this._setFanMode(v)));
     }
-    if (this._config.show_swing_row && swingModes.length) {
+    if (this._config.show_swing_button && swingModes.length) {
       featureRows.push(this._renderAttributeRow('Swing mode', swingModes, attrs.swing_mode, (v) => this._setSwingMode(v)));
     }
     const scrollClass = `ch-controls-scroll items-${featureRows.length}${featureRows.length >= 4 ? ' multiline' : ''}`;
+
+    const showTemp = this._config.show_current_temperature && attrs.current_temperature !== undefined;
+    const showHumidity = this._config.show_current_humidity && attrs.current_humidity !== undefined;
 
     return html`
       <ha-card style="--ch-active-color:${color}">
@@ -699,20 +721,22 @@ class ChronoHvacCard extends LitElement {
           </div>
         </div>
 
-        <div class="readouts">
-          ${this._config.show_current_temperature && attrs.current_temperature !== undefined ? html`
-            <div class="readout">
-              <div class="readout-label">Current temperature</div>
-              <div class="readout-value">${attrs.current_temperature}°C</div>
-            </div>
-          ` : html`<div></div>`}
-          ${this._config.show_current_humidity && attrs.current_humidity !== undefined ? html`
-            <div class="readout">
-              <div class="readout-label">Current humidity</div>
-              <div class="readout-value">${attrs.current_humidity}%</div>
-            </div>
-          ` : html`<div></div>`}
-        </div>
+        ${showTemp || showHumidity ? html`
+          <div class="readouts ${showTemp && showHumidity ? '' : 'single'}">
+            ${showTemp ? html`
+              <div class="readout">
+                <div class="readout-label">Current temperature</div>
+                <div class="readout-value">${attrs.current_temperature}°C</div>
+              </div>
+            ` : ''}
+            ${showHumidity ? html`
+              <div class="readout">
+                <div class="readout-label">Current humidity</div>
+                <div class="readout-value">${attrs.current_humidity}%</div>
+              </div>
+            ` : ''}
+          </div>
+        ` : ''}
 
         <div class="dial-wrapper" @pointerdown=${this._onPointerDown}>
           ${this._renderDial(stateObj)}
@@ -767,6 +791,10 @@ class ChronoHvacCard extends LitElement {
       display: grid;
       grid-template-columns: 1fr 1fr;
       text-align: center;
+    }
+    .readouts.single {
+      display: flex;
+      justify-content: center;
     }
     .readout-label {
       font-size: 12px;
