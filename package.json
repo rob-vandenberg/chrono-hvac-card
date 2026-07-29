@@ -1,0 +1,10 @@
+{
+  "name": "chrono-hvac-card",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "terser src/chrono-hvac-card.js -o dist/chrono-hvac-card.js --compress --mangle"
+  },
+  "devDependencies": {
+    "terser": "^5.0.0"
+  }
+}
