@@ -2,9 +2,19 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '0.0.4';
+const CARD_VERSION = '0.0.5';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v0.0.5: Rebuilt Mode/Preset/Fan/Swing rows against verified HA source for the
+//         MORE-INFO DIALOG specifically (more-info-climate.ts), not the card-feature
+//         system used earlier — these are different component trees. Confirmed from
+//         source: no hide-label, no show-arrow on ha-control-select-menu; row
+//         container replicates ha-more-info-control-select-container.ts exactly
+//         (flex-wrap row, 120-160px per item, gap var(--ha-space-3), 300px max-width
+//         at 4 items) — this was the actual cause of "too wide"; Mode row now uses
+//         the real per-mode icon mapping from data/climate.ts
+//         (CLIMATE_HVAC_MODE_ICONS) and real HVAC_MODES ordering, both mode label
+//         and icon change dynamically with current mode, matching source exactly
 // v0.0.4: Replace hand-built ch-feature-picker with HA's real native
 //         <ha-control-select-menu> component (confirmed from HA frontend source:
 //         hui-mode-select-card-feature-base.ts) — guarantees identical rendering
@@ -52,6 +62,27 @@ const CH_HVAC_MODE_LABELS = {
   dry:       'Dry',
   fan_only:  'Fan only',
 };
+
+// Verified from HA source (src/data/climate.ts: CLIMATE_HVAC_MODE_ICONS / climateHvacModeIcon)
+const CH_HVAC_MODE_ICONS = {
+  cool:      'mdi:snowflake',
+  dry:       'mdi:water-percent',
+  fan_only:  'mdi:fan',
+  auto:      'mdi:thermostat-auto',
+  heat:      'mdi:fire',
+  off:       'mdi:power',
+  heat_cool: 'mdi:sun-snowflake-variant',
+};
+const CH_HVAC_MODE_ICON_FALLBACK = 'mdi:thermostat';
+function chHvacModeIcon(mode) {
+  return CH_HVAC_MODE_ICONS[mode] || CH_HVAC_MODE_ICON_FALLBACK;
+}
+
+// Verified from HA source (src/data/climate.ts: HVAC_MODES / compareClimateHvacModes)
+const CH_HVAC_MODES_ORDER = ['auto', 'heat_cool', 'heat', 'cool', 'dry', 'fan_only', 'off'];
+function chCompareHvacModes(a, b) {
+  return CH_HVAC_MODES_ORDER.indexOf(a) - CH_HVAC_MODES_ORDER.indexOf(b);
+}
 
 // ─── Default Configuration ────────────────────────────────────────────────────
 const DEFAULT_CONFIG = {
@@ -456,25 +487,41 @@ class ChronoHvacCard extends LitElement {
     return html`<ha-icon icon="mdi:circle-small"></ha-icon>`;
   }
 
-  _renderButtonRow(title, iconName, options, activeValue, onChange, showOptionIcons) {
-    const opts = options.map((v) => ({
-      value: v,
-      label: CH_HVAC_MODE_LABELS[v] || chCapitalize(v),
+  _renderModeRow(hvacModes, currentMode) {
+    const opts = [...hvacModes].sort(chCompareHvacModes).map((m) => ({
+      value: m,
+      label: CH_HVAC_MODE_LABELS[m] || chCapitalize(m),
+      icon: chHvacModeIcon(m),
     }));
     return html`
       <ha-control-select-menu
-        show-arrow
-        hide-label
-        .label=${title}
-        .value=${activeValue}
+        .label=${'Mode'}
+        .value=${currentMode}
         .options=${opts}
-        .renderIcon=${showOptionIcons ? this._renderDotIcon : undefined}
         @wa-select=${(ev) => {
-          const value = ev.detail?.value ?? ev.detail?.item?.value;
-          if (value !== undefined && value !== activeValue) onChange(value);
+          const value = ev.detail?.item?.value;
+          if (value !== undefined && value !== currentMode) this._setHvacMode(value);
         }}
       >
-        <ha-icon slot="icon" icon=${iconName}></ha-icon>
+        <ha-icon slot="icon" icon=${chHvacModeIcon(currentMode)}></ha-icon>
+      </ha-control-select-menu>
+    `;
+  }
+
+  _renderAttributeRow(label, options, currentValue, onChange) {
+    const opts = options.map((v) => ({ value: v, label: CH_HVAC_MODE_LABELS[v] || chCapitalize(v) }));
+    return html`
+      <ha-control-select-menu
+        .label=${label}
+        .value=${currentValue}
+        .options=${opts}
+        .renderIcon=${this._renderDotIcon}
+        @wa-select=${(ev) => {
+          const value = ev.detail?.item?.value;
+          if (value !== undefined && value !== currentValue) onChange(value);
+        }}
+      >
+        <ha-icon slot="icon" icon="mdi:circle-small"></ha-icon>
       </ha-control-select-menu>
     `;
   }
@@ -628,6 +675,21 @@ class ChronoHvacCard extends LitElement {
 
     const name = this._config.name || this.hass.states[this._config.entity]?.attributes?.friendly_name || '';
 
+    const featureRows = [];
+    if (this._config.show_mode_row && hvacModes.length > 1) {
+      featureRows.push(this._renderModeRow(hvacModes, mode));
+    }
+    if (this._config.show_preset_row && presetModes.length) {
+      featureRows.push(this._renderAttributeRow('Preset', presetModes, attrs.preset_mode, (v) => this._setPresetMode(v)));
+    }
+    if (this._config.show_fan_row && fanModes.length) {
+      featureRows.push(this._renderAttributeRow('Fan mode', fanModes, attrs.fan_mode, (v) => this._setFanMode(v)));
+    }
+    if (this._config.show_swing_row && swingModes.length) {
+      featureRows.push(this._renderAttributeRow('Swing mode', swingModes, attrs.swing_mode, (v) => this._setSwingMode(v)));
+    }
+    const scrollClass = `ch-controls-scroll items-${featureRows.length}${featureRows.length >= 4 ? ' multiline' : ''}`;
+
     return html`
       <ha-card style="--ch-active-color:${color}">
         <div class="header">
@@ -659,20 +721,13 @@ class ChronoHvacCard extends LitElement {
 
         ${this._renderStepButtons(stateObj)}
 
-        <div class="feature-grid">
-          ${this._config.show_mode_row && hvacModes.length > 1
-            ? this._renderButtonRow('Mode', 'mdi:thermostat', hvacModes, mode, (v) => this._setHvacMode(v), false)
-            : ''}
-          ${this._config.show_preset_row && presetModes.length
-            ? this._renderButtonRow('Preset', 'mdi:tune-variant', presetModes, attrs.preset_mode, (v) => this._setPresetMode(v), true)
-            : ''}
-          ${this._config.show_fan_row && fanModes.length
-            ? this._renderButtonRow('Fan mode', 'mdi:fan', fanModes, attrs.fan_mode, (v) => this._setFanMode(v), true)
-            : ''}
-          ${this._config.show_swing_row && swingModes.length
-            ? this._renderButtonRow('Swing mode', 'mdi:arrow-oscillating', swingModes, attrs.swing_mode, (v) => this._setSwingMode(v), true)
-            : ''}
-        </div>
+        ${featureRows.length ? html`
+          <div class="ch-controls-container">
+            <div class="${scrollClass}">
+              ${featureRows}
+            </div>
+          </div>
+        ` : ''}
       </ha-card>
     `;
   }
@@ -816,10 +871,37 @@ class ChronoHvacCard extends LitElement {
     .step-buttons button:hover {
       background: rgba(255, 255, 255, 0.08);
     }
-    .feature-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
+    .ch-controls-container {
+      display: flex;
+      flex-direction: row;
+      justify-content: center;
+    }
+    .ch-controls-scroll {
+      display: flex;
+      flex-direction: row;
+      justify-content: flex-start;
+      gap: var(--ha-space-3, 12px);
+      margin: auto;
+      overflow: auto;
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+    .ch-controls-scroll::-webkit-scrollbar { display: none; }
+    .ch-controls-scroll > * {
+      min-width: 120px;
+      max-width: 160px;
+      flex: none;
+    }
+    @media all and (hover: hover), all and (min-width: 600px) and (min-height: 501px) {
+      .ch-controls-scroll {
+        justify-content: center;
+        flex-wrap: wrap;
+        width: 100%;
+        max-width: 450px;
+      }
+      .ch-controls-scroll.items-4 { max-width: 300px; }
+      .ch-controls-scroll.items-3 > * { max-width: 140px; }
+      .ch-controls-scroll.multiline > * { width: 140px; }
     }
   `;
 }
