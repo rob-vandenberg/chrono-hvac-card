@@ -2,9 +2,26 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.2.24';
+const CARD_VERSION = '1.2.25';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.2.25: Fix regression from v1.2.24 - .dial-wrapper's sizing was NOT actually
+//          the same technique as source despite claiming so. v1.2.24 used
+//          aspect-ratio:1 + flex:1, which requires height:100% to resolve up the
+//          full ancestor chain (only true inside HA's real grid dashboard); when
+//          it doesn't resolve, flex:1 has no height to distribute and collapses
+//          toward zero. Replaced with the literal, unmodified technique from
+//          hui-thermostat-card.ts's .container: flex row + justify-content/
+//          align-items:center + an empty ::before with padding-top:100%
+//          (percentage padding is calculated from WIDTH, not height - fully
+//          self-contained, works whether or not ha-card's height:100% resolves
+//          to anything meaningful). [Disclosed, minor structural difference]
+//          source's .container has one real child (padding:8px applied via
+//          ".container > *"); our .dial-wrapper has three (the svg plus two
+//          absolutely-positioned overlays for center-info and step-buttons) -
+//          the 8px padding is scoped to just the svg specifically, since the
+//          absolutely-positioned overlays already position themselves precisely
+//          via inset/bottom offsets and don't need it.
 // v1.2.24: Major structural rework distinguishing dashboard-card infrastructure
 //          (sourced from hui-thermostat-card.ts, re-fetched fresh - title,
 //          container/sizing model, getGridOptions, touch-only dot interaction,
@@ -1537,16 +1554,25 @@ class ChronoHvacCard extends LitElement {
       margin-top: 2px;
     }
     .dial-wrapper {
+      display: flex;
+      align-items: center;
+      justify-content: center;
       position: relative;
-      flex: 1;
-      width: 100%;
+      overflow: hidden;
       max-width: 100%;
-      aspect-ratio: 1;
-      min-height: 0;
       box-sizing: border-box;
-      padding: 8px;
+      flex: 1;
       container-type: inline-size;
       container-name: chdial;
+    }
+    .dial-wrapper::before {
+      content: "";
+      display: block;
+      padding-top: 100%;
+    }
+    .dial-wrapper > .dial-svg {
+      padding: 8px;
+      box-sizing: border-box;
     }
     .dial-wrapper::after {
       display: block;
