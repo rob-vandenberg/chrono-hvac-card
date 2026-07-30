@@ -2,9 +2,21 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.2.31';
+const CARD_VERSION = '1.2.32';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.2.32: Restored title to ha-card's own built-in .header property, matching
+//          v1.1.23 (the last version confirmed correct) and verified against
+//          real ha-card.ts source: ha-card renders <h1 class="card-header">
+//          internally (24px, padding 12px/16px/16px) when .header is set -
+//          this is what the custom:more-info-card reference actually uses,
+//          confirmed via user-provided DevTools inspection (h1.card-header,
+//          24px, 12px 16px 16px - exact match to ha-card.ts's own CSS).
+//          Removes the <p class="title"> markup (wrong element, introduced
+//          between v1.1.23 and v1.2.24) and its now-dead .title CSS rule.
+//          Nothing else changed: ha-card's padding:0/layout untouched,
+//          .more-info still a direct child of ha-card as before.
+// v1.2.31: Fixed v1.2.30's ResizeObserver to literally match hui-thermostat-
 // v1.2.31: Fixed v1.2.30's ResizeObserver to literally match hui-thermostat-
 //          card.ts's ResizeController, verified against source: (1) now
 //          observes the host card element itself (`this`), not .container
@@ -983,9 +995,7 @@ class ChronoHvacCard extends LitElement {
     const showMoreInfo = this._config.show_more_info_button;
 
     return html`
-      <ha-card>
-        ${name ? html`<p class="title">${name}</p>` : ''}
-
+      <ha-card .header=${name}>
         ${showMoreInfo ? html`
           <ha-icon-button class="more-info" label="Show more info" @click=${this._handleMoreInfo} tabindex="0">
             <ha-icon icon="mdi:dots-vertical"></ha-icon>
@@ -1050,19 +1060,6 @@ class ChronoHvacCard extends LitElement {
       border-radius: 12px;
       overflow: hidden;
       box-sizing: border-box;
-    }
-    .title {
-      width: 100%;
-      font-size: var(--ha-font-size-l);
-      line-height: var(--ha-line-height-expanded);
-      padding: 8px 30px 8px 30px;
-      margin: 0;
-      text-align: center;
-      box-sizing: border-box;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      flex: none;
     }
     .more-info {
       position: absolute;
