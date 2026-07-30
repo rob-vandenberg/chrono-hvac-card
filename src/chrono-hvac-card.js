@@ -2,9 +2,16 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.1.21';
+const CARD_VERSION = '1.1.22';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.1.22: Readouts block moved up 8px without moving the dial or anything below
+//          it. Implemented by reducing .content's top padding (16px -> 8px,
+//          i.e. shrinking the space contributed by the block above, not a
+//          negative margin on the readouts block itself), then adding
+//          margin-top:8px to .dial-wrapper to restore its original position -
+//          net effect: readouts moves up 8px, gap between readouts and the dial
+//          grows by 8px, dial and everything below unchanged.
 // v1.1.21: Unavailable-state handling now a verified port, not an invention -
 //          read further into ha-state-control-climate-temperature.ts than
 //          before and found the real fallback branch. Dial now forces the
@@ -1279,7 +1286,7 @@ class ChronoHvacCard extends LitElement {
       display: flex;
       flex-direction: column;
       gap: 16px;
-      padding: 16px;
+      padding: 8px 16px 16px 16px;
     }
     .more-info {
       position: absolute;
@@ -1325,7 +1332,7 @@ class ChronoHvacCard extends LitElement {
       position: relative;
       width: 70%;
       max-width: 320px;
-      margin: 0 auto;
+      margin: 8px auto 0;
       aspect-ratio: 1;
     }
     .dial-svg {
