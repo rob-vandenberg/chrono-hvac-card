@@ -2,9 +2,15 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.2.40';
+const CARD_VERSION = '1.2.41';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.2.41: [User-measured] Removed .ch-controls-container's own
+//          padding-bottom:12px + margin-bottom:4px (16px combined) - was
+//          stacking on top of ha-card.ts's automatic padding:var(--ha-space-4)
+//          (16px) on .card-content since the v1.2.38 rename, doubling the
+//          bottom gap. User confirmed this was the only misaligned block;
+//          everything else already correct.
 // v1.2.40: Removed height:100% from .card-content. Was circular now that
 //          getGridOptions() no longer forces a fixed pixel height on ha-card
 //          (v1.2.39): a child asking for 100% of a parent whose own height
@@ -1211,8 +1217,7 @@ class ChronoHvacCard extends LitElement {
       flex: none;
       width: 100%;
       box-sizing: border-box;
-      padding: 0 12px 12px 12px;
-      margin-bottom: 4px;
+      padding: 0 12px 0 12px;
     }
     .ch-controls-scroll {
       display: flex;
