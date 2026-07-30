@@ -2,9 +2,14 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.2.34';
+const CARD_VERSION = '1.2.35';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.2.35: [Disclosed, not source-verified] User-measured manual spacing
+//          adjustment, not derived from native source: .readouts margin-bottom
+//          40px->26px (-14px), .container margin-bottom 0->14px (+14px),
+//          .ch-controls-container margin-bottom 0->6px (+6px). Moves the dial
+//          block up 14px without moving readouts or controls positions.
 // v1.2.34: Add margin-bottom: var(--ha-space-10) to .readouts, matching
 //          more-info-climate.ts's .current class exactly (was missing).
 //          Fixes tight current-temp-to-arc spacing.
@@ -1095,7 +1100,7 @@ class ChronoHvacCard extends LitElement {
       width: 100%;
       box-sizing: border-box;
       padding: 0 16px;
-      margin-bottom: var(--ha-space-10);
+      margin-bottom: 26px;
       flex: none;
     }
     .readouts.single {
@@ -1124,6 +1129,7 @@ class ChronoHvacCard extends LitElement {
       max-width: 100%;
       box-sizing: border-box;
       flex: 1;
+      margin-bottom: 14px;
     }
     .container::before {
       content: "";
@@ -1141,6 +1147,7 @@ class ChronoHvacCard extends LitElement {
       width: 100%;
       box-sizing: border-box;
       padding: 0 12px 12px 12px;
+      margin-bottom: 6px;
     }
     .ch-controls-scroll {
       display: flex;
