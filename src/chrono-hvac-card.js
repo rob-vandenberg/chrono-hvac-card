@@ -2,9 +2,18 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.2.42';
+const CARD_VERSION = '1.2.43';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.2.43: Added show_border config option (default true) with editor toggle.
+//          ha-card's border comes from ha-card.ts's own default CSS
+//          (border-width: var(--ha-card-border-width, 1px), confirmed from
+//          source) - when off, a .no-border class sets border-width:0 on our
+//          own <ha-card> element, overriding it directly rather than via any
+//          theme variable. [Self-caught during this edit: an earlier
+//          str_replace briefly dropped DEFAULT_CONFIG's closing brace and
+//          the Helpers section comment header - caught and fixed before
+//          delivery, verified via node -c and diff below.]
 // v1.2.42: [User-measured] .current (readout block): padding-top 12px->20px,
 //          margin-bottom 26px->18px (net 38px unchanged). Shifts the block
 //          down 8px from its own top spacing, not the title's, keeping the
@@ -639,6 +648,7 @@ const DEFAULT_CONFIG = {
   show_preset_button:         true,
   show_fan_button:            true,
   show_swing_button:          true,
+  show_border:                true,
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -802,6 +812,7 @@ class ChronoHvacCardEditor extends LitElement {
         </div>
 
         <div class="section-title">Display</div>
+        ${chToggleField('Show card border', c.show_border, (e) => this._valueChanged('show_border', e))}
         ${chToggleField('Show more-info button', c.show_more_info_button, (e) => this._valueChanged('show_more_info_button', e))}
         ${hasCurrentTemperature ? chToggleField('Show current temperature', c.show_current_temperature, (e) => this._valueChanged('show_current_temperature', e)) : ''}
         ${hasCurrentHumidity ? chToggleField('Show current humidity', c.show_current_humidity, (e) => this._valueChanged('show_current_humidity', e)) : ''}
@@ -1059,7 +1070,7 @@ class ChronoHvacCard extends LitElement {
     const showMoreInfo = this._config.show_more_info_button;
 
     return html`
-      <ha-card .header=${name}>
+      <ha-card .header=${name} class="${this._config.show_border ? '' : 'no-border'}">
         ${showMoreInfo ? html`
           <ha-icon-button class="more-info" label="Show more info" @click=${this._handleMoreInfo} tabindex="0">
             <ha-icon icon="mdi:dots-vertical"></ha-icon>
@@ -1122,6 +1133,9 @@ class ChronoHvacCard extends LitElement {
       color: var(--primary-text-color, #fff);
       border-radius: 12px;
       box-sizing: border-box;
+    }
+    ha-card.no-border {
+      border-width: 0;
     }
     .card-content {
       position: relative;
