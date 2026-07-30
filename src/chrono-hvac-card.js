@@ -2,9 +2,13 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.2.41';
+const CARD_VERSION = '1.2.42';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.2.42: [User-measured] .current (readout block): padding-top 12px->20px,
+//          margin-bottom 26px->18px (net 38px unchanged). Shifts the block
+//          down 8px from its own top spacing, not the title's, keeping the
+//          arc and everything below in the same position.
 // v1.2.41: [User-measured] Removed .ch-controls-container's own
 //          padding-bottom:12px + margin-bottom:4px (16px combined) - was
 //          stacking on top of ha-card.ts's automatic padding:var(--ha-space-4)
@@ -1153,8 +1157,8 @@ class ChronoHvacCard extends LitElement {
       text-align: center;
       width: 100%;
       box-sizing: border-box;
-      padding: 12px 16px 0 16px;
-      margin-bottom: 26px;
+      padding: 20px 16px 0 16px;
+      margin-bottom: 18px;
       flex: none;
     }
     .current div {
