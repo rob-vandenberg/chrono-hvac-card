@@ -2,9 +2,35 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.1.22';
+const CARD_VERSION = '1.1.23';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.1.23: Second full source-comparison review pass, two findings fixed:
+//          1) Off-state arc hiding: verified from source
+//          (ha-control-circular-slider.ts: ".inactive .arc{opacity:0}", applied
+//          only in the interactive single/dual branches via .inactive=${!active}
+//          in ha-state-control-climate-temperature.ts - NOT in the readonly
+//          unavailable branch, which already renders correctly since v1.1.21).
+//          When a climate entity is genuinely off (not unavailable), the arc
+//          fill (clear/colored/active layers) is now fully hidden, leaving only
+//          the plain background ring and the white target dot - previously we
+//          still rendered a second grey ring on top of the background.
+//          2) Full keyboard accessibility: ported _handleKeyDown/_handleKeyUp
+//          from source - ArrowUp/Right (+step), ArrowDown/Left (-step),
+//          PageUp/PageDown (+/- max(step, (max-min)/10)), Home/End (min/max).
+//          Keydown updates visually (reuses the same drag-override state as
+//          pointer dragging), keyup commits immediately via the same
+//          _onPointerUp path used for drag release - matches source's
+//          changing-during/changed-on-release pattern exactly. Added
+//          role="slider" + full ARIA attributes + tabindex to the interaction
+//          path. [Disclosed adaptation] native has two independently-focusable
+//          slider elements in dual mode (one per low/high); we use one shared
+//          focusable control acting on whichever target is currently selected
+//          (_selectedRangeTarget) - same target the step buttons already act
+//          on, rather than building two separate focusable DOM elements.
+//          Focus-visible outline is also our own addition (a visible stroke
+//          outline), since native's focus style applies to a visible colored
+//          arc element, while our interaction path is invisible by design.
 // v1.1.22: Readouts block moved up 8px without moving the dial or anything below
 //          it. Implemented by reducing .content's top padding (16px -> 8px,
 //          i.e. shrinking the space contributed by the block above, not a
@@ -947,6 +973,84 @@ class ChronoHvacCard extends LitElement {
     window.removeEventListener('pointerup', this._boundPointerUp);
   }
 
+  // ─── Keyboard accessibility ────────────────────────────────────────────────
+  // Ported from HA source (ha-control-circular-slider.ts: _handleKeyDown/
+  // _handleKeyUp): keydown updates the value visually (reusing the same
+  // _dragTarget/_dragTemp override state as pointer dragging, so holding a key
+  // accumulates correctly across repeated keydown events); keyup commits via
+  // the same immediate (non-debounced) _onPointerUp path used for drag release.
+  // [Disclosed adaptation] native has two independently-focusable slider
+  // elements in dual mode (one per low/high); we use a single shared focusable
+  // control that acts on whichever target is currently selected
+  // (_selectedRangeTarget), same target the step buttons act on.
+  _handleKeyDown(ev) {
+    const A11Y_KEYS = ['ArrowRight', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'];
+    if (!A11Y_KEYS.includes(ev.code)) return;
+    const stateObj = this._stateObj;
+    if (!stateObj || stateObj.state === 'off' || stateObj.state === 'unavailable') return;
+    ev.preventDefault();
+
+    const attrs = stateObj.attributes;
+    const min = attrs.min_temp ?? CH_DEFAULT_MIN_TEMP;
+    const max = attrs.max_temp ?? CH_DEFAULT_MAX_TEMP;
+    const step = chGetStep(this.hass, stateObj);
+    const tenPercentStep = Math.max(step, (max - min) / 10);
+    const isRange = attrs.target_temp_low !== undefined && attrs.target_temp_high !== undefined;
+
+    if (!this._dragTarget) {
+      if (isRange) {
+        this._dragTarget = this._selectedRangeTarget || 'low';
+        this._dragTemp = { low: this._effectiveLow(attrs), high: this._effectiveHigh(attrs) };
+      } else {
+        this._dragTarget = 'single';
+        this._dragTemp = { single: this._effectiveSingle(attrs) };
+      }
+    }
+
+    const currentValue = this._dragTarget === 'single'
+      ? (this._dragTemp.single ?? min)
+      : (this._dragTarget === 'low' ? (this._dragTemp.low ?? min) : (this._dragTemp.high ?? max));
+
+    let next = currentValue;
+    switch (ev.code) {
+      case 'ArrowRight':
+      case 'ArrowUp':
+        next = currentValue + step;
+        break;
+      case 'ArrowLeft':
+      case 'ArrowDown':
+        next = currentValue - step;
+        break;
+      case 'PageUp':
+        next = currentValue + tenPercentStep;
+        break;
+      case 'PageDown':
+        next = currentValue - tenPercentStep;
+        break;
+      case 'Home':
+        next = min;
+        break;
+      case 'End':
+        next = max;
+        break;
+    }
+
+    if (this._dragTarget === 'single') {
+      this._dragTemp = { single: chClamp(next, min, max) };
+    } else if (this._dragTarget === 'low') {
+      this._dragTemp = { ...this._dragTemp, low: chClamp(next, min, this._dragTemp.high ?? max) };
+    } else {
+      this._dragTemp = { ...this._dragTemp, high: chClamp(next, this._dragTemp.low ?? min, max) };
+    }
+    this.requestUpdate();
+  }
+
+  _handleKeyUp(ev) {
+    const A11Y_KEYS = ['ArrowRight', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'];
+    if (!A11Y_KEYS.includes(ev.code)) return;
+    this._onPointerUp();
+  }
+
   // ─── Render ────────────────────────────────────────────────────────────────
   _getAttributeIcon(attribute, value) {
     const key = `${attribute}:${value}`;
@@ -1010,7 +1114,11 @@ class ChronoHvacCard extends LitElement {
   // Ported from HA source (ha-control-circular-slider.ts: renderArc) — builds one
   // arc's clear/colored/active layers plus its target dot (a zero-length,
   // round-linecap stroke segment positioned via dasharray, not x/y coordinates).
-  _renderArcGroup(value, mode, min, max, current, colorVar) {
+  // `inactive` mirrors source's .inactive class (applied only in the interactive
+  // single/dual branches when the entity is off, not when unavailable, which uses
+  // a separate readonly branch) - hides the arc fill entirely via opacity, leaving
+  // only the plain background ring and the target dot visible.
+  _renderArcGroup(value, mode, min, max, current, colorVar, inactive) {
     const path = chSvgArc({ x: 0, y: 0, start: 0, end: CH_ARC_MAX_ANGLE, r: CH_ARC_RADIUS });
     const limit = mode === 'end' ? max : min;
     const curr = current ?? limit;
@@ -1034,7 +1142,7 @@ class ChronoHvacCard extends LitElement {
     const targetCircle = showTarget ? chStrokeCircleDashArc(target, min, max) : null;
 
     return svg`
-      <g>
+      <g class="${inactive ? 'ch-inactive' : ''}">
         <path class="ch-arc ch-arc-clear" d=${path} stroke-dasharray=${coloredArc[0]} stroke-dashoffset=${coloredArc[1]}></path>
         <path class="ch-arc ch-arc-colored" style="stroke:${colorVar}" d=${path} stroke-dasharray=${coloredArc[0]} stroke-dashoffset=${coloredArc[1]}></path>
         ${activeArc ? svg`<path class="ch-arc ch-arc-active" style="stroke:${colorVar}" d=${path} stroke-dasharray=${activeArc[0]} stroke-dashoffset=${activeArc[1]}></path>` : ''}
@@ -1068,9 +1176,10 @@ class ChronoHvacCard extends LitElement {
     } else if (isRange) {
       const low = this._effectiveLow(attrs);
       const high = this._effectiveHigh(attrs);
+      const inactive = !chStateActive(mode);
       arcs = svg`
-        ${this._renderArcGroup(low, 'start', min, max, current, 'var(--ch-low-color)')}
-        ${this._renderArcGroup(high, 'end', min, max, current, 'var(--ch-high-color)')}
+        ${this._renderArcGroup(low, 'start', min, max, current, 'var(--ch-low-color)', inactive)}
+        ${this._renderArcGroup(high, 'end', min, max, current, 'var(--ch-high-color)', inactive)}
       `;
     } else {
       const target = this._effectiveSingle(attrs);
@@ -1080,7 +1189,7 @@ class ChronoHvacCard extends LitElement {
       const heatCoolModes = (attrs.hvac_modes || []).filter((m) => ['heat', 'cool', 'heat_cool'].includes(m));
       const effectiveMode = (heatCoolModes.length === 1 && ['off', 'auto'].includes(mode)) ? heatCoolModes[0] : mode;
       const sliderMode = CH_SLIDER_MODES[effectiveMode] || 'full';
-      arcs = this._renderArcGroup(target, sliderMode, min, max, current, 'var(--ch-state-color)');
+      arcs = this._renderArcGroup(target, sliderMode, min, max, current, 'var(--ch-state-color)', !chStateActive(mode));
     }
 
     return svg`
@@ -1092,7 +1201,18 @@ class ChronoHvacCard extends LitElement {
           <path
             class="ch-interaction ${(mode === 'off' || mode === 'unavailable') ? 'disabled' : ''}"
             d=${trackPath}
+            role="slider"
+            tabindex=${(mode === 'off' || mode === 'unavailable') ? '-1' : '0'}
+            aria-valuemin=${min}
+            aria-valuemax=${max}
+            aria-valuenow=${isRange
+              ? (this._selectedRangeTarget === 'high' ? this._effectiveHigh(attrs) : this._effectiveLow(attrs))
+              : this._effectiveSingle(attrs)}
+            aria-disabled=${mode === 'off' || mode === 'unavailable'}
+            aria-label="Temperature"
             @pointerdown=${this._onPointerDown}
+            @keydown=${this._handleKeyDown}
+            @keyup=${this._handleKeyUp}
           ></path>
         </g>
       </svg>
@@ -1350,6 +1470,12 @@ class ChronoHvacCard extends LitElement {
       pointer-events: auto;
       cursor: pointer;
       touch-action: none;
+      outline: none;
+    }
+    .ch-interaction:focus-visible {
+      stroke: var(--primary-color);
+      stroke-width: 2px;
+      opacity: 0.5;
     }
     .ch-interaction.disabled {
       pointer-events: none;
@@ -1373,6 +1499,9 @@ class ChronoHvacCard extends LitElement {
       fill: none;
       stroke-linecap: round;
       stroke-width: 24px;
+    }
+    .ch-inactive .ch-arc {
+      opacity: 0;
     }
     .ch-arc-clear {
       stroke: var(--clear-background-color, var(--disabled-color));
