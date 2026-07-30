@@ -2,9 +2,13 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.2.35';
+const CARD_VERSION = '1.2.36';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.2.36: [Disclosed, not source-verified] User-measured: .container margin-
+//          bottom 14px->16px (+2px), .ch-controls-container margin-bottom
+//          6px->4px (-2px). Net-zero swap: shifts controls block down 2px
+//          without moving readouts/dial or total card height.
 // v1.2.35: [Disclosed, not source-verified] User-measured manual spacing
 //          adjustment, not derived from native source: .readouts margin-bottom
 //          40px->26px (-14px), .container margin-bottom 0->14px (+14px),
@@ -1129,7 +1133,7 @@ class ChronoHvacCard extends LitElement {
       max-width: 100%;
       box-sizing: border-box;
       flex: 1;
-      margin-bottom: 14px;
+      margin-bottom: 16px;
     }
     .container::before {
       content: "";
@@ -1147,7 +1151,7 @@ class ChronoHvacCard extends LitElement {
       width: 100%;
       box-sizing: border-box;
       padding: 0 12px 12px 12px;
-      margin-bottom: 6px;
+      margin-bottom: 4px;
     }
     .ch-controls-scroll {
       display: flex;
