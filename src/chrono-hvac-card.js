@@ -2,9 +2,27 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.2.37';
+const CARD_VERSION = '1.2.38';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.2.38: Four changes: 1) ha-card: added height:100%/width:100%, matching
+//          hui-thermostat-card.ts source - fixes edit-mode overflow bug
+//          (verified: ha-card was rendering 622px inside a 312px grid cell).
+//          2) .content renamed to .card-content, matching ha-card.ts's own
+//          ::slotted(.card-content) selector (real automatic padding from
+//          ha-card itself, previously missing since "content" didn't match).
+//          3) Readouts markup/CSS rewritten from .readouts/.readout to
+//          .current/<p class="label">/<p class="value">, matching more-info-
+//          climate.ts's real .current class and markup exactly (existing
+//          user-tuned margin-bottom:26px preserved, not reverted to source's
+//          var(--ha-space-10)). 4) .container and .ch-controls-container now
+//          wrapped in a shared .controls div (flex:1, column), matching the
+//          reference DOM's grouping - existing margin-bottom values on
+//          .container/.ch-controls-container preserved as-is internally.
+//          [Disclosed] spacing may need re-tuning after this pass, since
+//          .card-content's newly-real automatic padding stacks with existing
+//          manual margins that were tuned against the old (padding-less)
+//          .content div.
 // v1.2.37: 1) .readouts padding-top 0->12px. 2) [Workaround, disclosed] title's
 //          padding-bottom cannot be reduced directly - it's inside ha-card's own
 //          shadow DOM with no exposed hook - so .content gets margin-top:-12px
@@ -1026,24 +1044,25 @@ class ChronoHvacCard extends LitElement {
             <ha-icon icon="mdi:dots-vertical"></ha-icon>
           </ha-icon-button>
         ` : ''}
-        <div class="content">
+        <div class="card-content">
         ${showTemp || showHumidity ? html`
-          <div class="readouts ${showTemp && showHumidity ? '' : 'single'}">
+          <div class="current">
             ${showTemp ? html`
-              <div class="readout">
-                <div class="readout-label">Current temperature</div>
-                <div class="readout-value">${attrs.current_temperature}°C</div>
+              <div>
+                <p class="label">Current temperature</p>
+                <p class="value">${attrs.current_temperature}°C</p>
               </div>
             ` : ''}
             ${showHumidity ? html`
-              <div class="readout">
-                <div class="readout-label">Current humidity</div>
-                <div class="readout-value">${attrs.current_humidity}%</div>
+              <div>
+                <p class="label">Current humidity</p>
+                <p class="value">${attrs.current_humidity}%</p>
               </div>
             ` : ''}
           </div>
         ` : ''}
 
+        <div class="controls">
         <div class="container">
           <ha-state-control-climate-temperature
             style=${this._containerHeight ? `max-width:${this._containerHeight}px` : ''}
@@ -1061,6 +1080,7 @@ class ChronoHvacCard extends LitElement {
           </div>
         ` : ''}
         </div>
+        </div>
       </ha-card>
     `;
   }
@@ -1074,13 +1094,15 @@ class ChronoHvacCard extends LitElement {
     }
     ha-card {
       position: relative;
+      height: 100%;
+      width: 100%;
       padding: 0;
       background: var(--card-background-color, #1a1a1a);
       color: var(--primary-text-color, #fff);
       border-radius: 12px;
       box-sizing: border-box;
     }
-    .content {
+    .card-content {
       position: relative;
       height: 100%;
       width: 100%;
@@ -1107,9 +1129,11 @@ class ChronoHvacCard extends LitElement {
       color: var(--error-color, #db4437);
       padding: 16px;
     }
-    .readouts {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
+    .current {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      justify-content: center;
       text-align: center;
       width: 100%;
       box-sizing: border-box;
@@ -1117,22 +1141,39 @@ class ChronoHvacCard extends LitElement {
       margin-bottom: 26px;
       flex: none;
     }
-    .readouts.single {
+    .current div {
       display: flex;
+      flex-direction: column;
+      align-items: center;
       justify-content: center;
+      text-align: center;
+      flex: 1;
     }
-    .readout-label {
+    .current p {
+      margin: 0;
+      text-align: center;
+      color: var(--primary-text-color);
+    }
+    .current .label {
       opacity: 0.8;
       font-size: var(--ha-font-size-m);
       line-height: var(--ha-line-height-condensed);
       letter-spacing: 0.4px;
-      color: var(--primary-text-color);
+      margin-bottom: 2px;
     }
-    .readout-value {
+    .current .value {
       font-size: var(--ha-font-size-xl);
       font-weight: var(--ha-font-weight-medium);
       line-height: var(--ha-line-height-condensed);
-      margin-top: 2px;
+      direction: ltr;
+    }
+    .controls {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
+      box-sizing: border-box;
+      flex: 1;
     }
     .container {
       display: flex;
