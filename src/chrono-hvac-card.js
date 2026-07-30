@@ -1,10 +1,58 @@
 import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js?module';
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
+import { ResizeController } from 'https://unpkg.com/@lit-labs/observers@1/resize-controller.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.2.26';
+const CARD_VERSION = '1.2.28';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.2.28: FUNDAMENTAL ARCHITECTURE CHANGE for block 3 (the arc, +/- buttons,
+//          and center temperature). Every previous version of this block was a
+//          from-scratch reimplementation of native's geometry, color, drag,
+//          keyboard, and touch logic - each attempt introduced its own subtle
+//          divergence from source, several of which caused real regressions
+//          tonight. Replaced entirely: block 3 now renders the REAL
+//          <ha-state-control-climate-temperature> custom element directly
+//          (already globally registered in any real HA frontend, same way this
+//          file already uses ha-control-select-menu/ha-big-number/
+//          ha-outlined-icon-button/ha-icon-button directly elsewhere), exactly
+//          as hui-thermostat-card.ts does: style=max-width (from our own
+//          ResizeController measuring .container), prevent-interaction-on-scroll,
+//          show-secondary, .stateObj=${stateObj}. This guarantees block 3 is
+//          byte-for-byte identical to native by construction - there is no
+//          geometry, color, drag, keyboard, or responsive-breakpoint logic left
+//          for us to get wrong, because we no longer implement any of it.
+//          Removed entirely (all now dead code, superseded by the real
+//          element): CH_ARC_* constants, CH_SLIDER_MODES, CH_HVAC_ACTION_TO_MODE,
+//          chSvgArc, chClamp, chValueToPercentage, chStrokeDashArc,
+//          chStrokeCircleDashArc, chComputeCssVariable, chSlugify,
+//          chDomainColorProperties, chStateActive, chStateColorCss, chGetStep,
+//          chDebounce, _effectiveSingle/Low/High, _commitStepOverride, _step,
+//          _percentageFromPointer, _findActiveHandle, _onPointerDown/Move/Up,
+//          _handleKeyDown/Up, _renderArcGroup, _renderDial, _renderCenter,
+//          _renderStepButtons, and every CSS rule for .dial-wrapper/.dial-svg/
+//          .ch-arc*/.ch-target*/.ch-info/.ch-label*/.ch-dual/.step-buttons*/the
+//          responsive @container breakpoints - all of it was reimplementing
+//          behavior the real component already provides internally.
+//          .container's CSS is unchanged (still hui-thermostat-card.ts's exact
+//          model, verified working as of v1.2.26/27) and now correctly has a
+//          single real child again, matching source's ".container > *" exactly.
+//          Blocks 1 (title/more-info), 2 (readouts), and 4 (mode/preset/fan/
+//          swing rows) are untouched.
+// v1.2.27: Ported the ResizeController mechanism itself, literally - not a
+//          substitute. Imports the same @lit-labs/observers package source
+//          uses (pinned to a lit-2-compatible version via unpkg, consistent
+//          with how lit itself is imported in this file). Constructor sets up
+//          the controller with the exact same callback as source: measures
+//          .container's own rendered clientHeight on resize. render() applies
+//          that value as max-width directly on .dial-wrapper, matching
+//          source's styleMap({maxWidth: controlMaxWidth}) exactly (implemented
+//          as a plain inline style string here since styleMap wasn't already
+//          imported - same resulting DOM attribute, different Lit directive
+//          used to write it). This caps the dial's width to whatever height
+//          .container actually has available, fixing the clipping seen on
+//          wide-but-short cards where the fixed 320px default overflowed
+//          .container's overflow:hidden.
 // v1.2.26: Fix v1.2.25's collapse - re-fetched hui-thermostat-card.ts (this time
 //          the actual file, uploaded directly, not a possibly-corrupted page
 //          render) and found the real structure: native uses TWO separate
@@ -344,29 +392,6 @@ const CARD_VERSION = '1.2.26';
 //         attributes and wired to HA climate services, heat/cool/idle color states,
 //         full visual editor with per-row visibility toggles
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-// Verified from HA source (src/components/ha-control-circular-slider.ts)
-const CH_ARC_MAX_ANGLE = 270;                                   // local sweep, degrees
-const CH_ARC_ROTATE = 360 - CH_ARC_MAX_ANGLE / 2 - 90;           // group rotation, = 135
-const CH_ARC_RADIUS = 145;
-const CH_ARC_VIEWBOX = 320;                                      // svg viewBox is 0 0 320 320
-const CH_ARC_CENTER = 160;                                       // viewBox/2, translate(160 160)
-
-// Verified from HA source (src/state-control/climate/ha-state-control-climate-temperature.ts)
-const CH_SLIDER_MODES = {
-  auto: 'full', cool: 'end', dry: 'full', fan_only: 'full',
-  heat: 'start', heat_cool: 'full', off: 'full',
-};
-
-// Verified from HA source (src/data/climate.ts: CLIMATE_HVAC_ACTION_TO_MODE)
-const CH_HVAC_ACTION_TO_MODE = {
-  cooling: 'cool', defrosting: 'heat', drying: 'dry', fan: 'fan_only',
-  heating: 'heat', idle: 'off', off: 'off', preheating: 'heat',
-};
-
-const CH_DEFAULT_MIN_TEMP = 7;
-const CH_DEFAULT_MAX_TEMP = 35;
-
 const CH_HVAC_MODE_LABELS = {
   off:       'Off',
   heat:      'Heat',
@@ -507,117 +532,6 @@ function chParseNumber(raw) {
   return isNaN(n) ? null : n;
 }
 
-// Ported directly from HA source (src/resources/svg-arc.ts)
-function chSvgArc(opts) {
-  const { x, y, r, start, end, rotate = 0 } = opts;
-  const t1 = (start / 180) * Math.PI;
-  const t2 = (end / 180) * Math.PI;
-  const delta = (t2 - t1) % (2 * Math.PI);
-  const phi = (rotate / 180) * Math.PI;
-  const cosPhi = Math.cos(phi);
-  const sinPhi = Math.sin(phi);
-  const rot = ([vx, vy]) => [cosPhi * vx - sinPhi * vy, sinPhi * vx + cosPhi * vy];
-  const [sX, sY] = rot([r * Math.cos(t1), r * Math.sin(t1)]).map((v, i) => v + (i === 0 ? x : y));
-  const [eX, eY] = rot([r * Math.cos(t1 + delta), r * Math.sin(t1 + delta)]).map((v, i) => v + (i === 0 ? x : y));
-  const fA = delta > Math.PI ? 1 : 0;
-  const fS = delta > 0 ? 1 : 0;
-  return ['M', sX, sY, 'A', r, r, (phi / (2 * Math.PI)) * 360, fA, fS, eX, eY].join(' ');
-}
-
-function chClamp(value, min, max) {
-  return Math.min(Math.max(value, min), max);
-}
-
-// Ported directly from HA source (src/components/ha-control-circular-slider.ts:
-// _valueToPercentage / _strokeDashArc / _strokeCircleDashArc)
-function chValueToPercentage(value, min, max) {
-  return (chClamp(value, min, max) - min) / (max - min);
-}
-
-function chStrokeDashArc(from, to, min, max) {
-  const start = chValueToPercentage(from, min, max);
-  const end = chValueToPercentage(to, min, max);
-  const track = (CH_ARC_RADIUS * 2 * Math.PI * CH_ARC_MAX_ANGLE) / 360;
-  const arc = Math.max((end - start) * track, 0);
-  const arcOffset = start * track - 0.5;
-  return [`${arc} ${track - arc}`, `-${arcOffset}`];
-}
-
-function chStrokeCircleDashArc(value, min, max) {
-  return chStrokeDashArc(value, value, min, max);
-}
-
-// Ported directly from HA source (src/resources/css-variables.ts: computeCssVariable)
-function chComputeCssVariable(props) {
-  if (Array.isArray(props)) {
-    return props.reduceRight((str, variable) => `var(${variable}${str ? `, ${str}` : ''})`, undefined);
-  }
-  return `var(${props})`;
-}
-
-function chSlugify(str) {
-  return String(str).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-}
-
-// Ported from HA source (src/common/entity/state_color.ts: domainColorProperties).
-// [Note] the "active" flag here uses a simplified heuristic (mode !== 'off') since
-// state_active.ts (the real stateActive() source) was not verified in this session.
-// This tier is only reached as a fallback if HA's theme has no
-// --state-climate-<mode>-color defined for the specific mode, which standard HA
-// themes always do for hvac modes — so this heuristic should rarely, if ever, matter.
-function chDomainColorProperties(domain, stateObj, state, active) {
-  const stateKey = chSlugify(state);
-  const activeKey = active ? 'active' : 'inactive';
-  const deviceClass = stateObj.attributes.device_class;
-  const props = [];
-  if (deviceClass) props.push(`--state-${domain}-${deviceClass}-${stateKey}-color`);
-  props.push(
-    `--state-${domain}-${stateKey}-color`,
-    `--state-${domain}-${activeKey}-color`,
-    `--state-${activeKey}-color`
-  );
-  return props;
-}
-
-// Shared active/inactive heuristic, used consistently everywhere "active" matters
-// (color chain fallback tier, dual-mode low/high coloring, button tinting).
-// [Note] approximates the real stateActive() (source not verified this session);
-// treats off/unavailable/unknown as inactive, everything else as active.
-// Ported from HA source (src/common/entity/state_active.ts: stateActive), scoped
-// to the climate domain only (this card never handles any other domain). For
-// climate: not in TIMESTAMP_STATE_DOMAINS, not the "alert" exception, and not
-// one of the custom-cased domains (alarm_control_panel/cover/lock/etc) - so the
-// real logic reduces to exactly this.
-function chStateActive(state) {
-  if (state === 'unavailable' || state === 'unknown') return false;
-  if (state === 'off') return false;
-  return true;
-}
-
-function chStateColorCss(stateObj, overrideState) {
-  const compareState = overrideState !== undefined ? overrideState : stateObj.state;
-  if (compareState === 'unavailable') return 'var(--state-unavailable-color)';
-  const active = chStateActive(compareState);
-  return chComputeCssVariable(chDomainColorProperties('climate', stateObj, compareState, active));
-}
-
-// Ported from HA source (ha-state-control-climate-temperature.ts: this._step getter)
-function chGetStep(hass, stateObj) {
-  if (stateObj.attributes.target_temp_step) return stateObj.attributes.target_temp_step;
-  return hass?.config?.unit_system?.temperature === '°F' ? 1 : 0.5;
-}
-
-// Simple debounce, matching source's use of common/util/debounce for step-button
-// service calls (1000ms).
-function chDebounce(fn, wait) {
-  let timer;
-  const debounced = (...args) => {
-    clearTimeout(timer);
-    timer = setTimeout(() => fn(...args), wait);
-  };
-  debounced.cancel = () => clearTimeout(timer);
-  return debounced;
-}
 
 // ─── Editor Field Helpers ──────────────────────────────────────────────────────
 function chTextField(label, value, onChange, opts = {}) {
@@ -823,23 +737,18 @@ customElements.define('chrono-hvac-card-editor', ChronoHvacCardEditor);
 
 // ─── Card ─────────────────────────────────────────────────────────────────────
 class ChronoHvacCard extends LitElement {
-  static properties = {
-    _dragTarget:        { type: String },   // null | 'single' | 'low' | 'high'
-    _dragTemp:          { type: Object },   // { single } or { low, high } while dragging
-    _stepOverride:       { type: Object },  // { value?, low?, high? } while a debounced button-step is pending
-    _selectedRangeTarget: { type: String }, // 'low' | 'high' - which side the step buttons act on in dual mode
-  };
-
   constructor() {
     super();
-    this._dragTarget = null;
-    this._dragTemp = null;
-    this._boundPointerMove = this._onPointerMove.bind(this);
-    this._boundPointerUp = this._onPointerUp.bind(this);
     this._attrIconCache = {};
-    this._selectedRangeTarget = 'low';
-    this._stepOverride = {};
-    this._debouncedStepCommit = chDebounce(() => this._commitStepOverride(), 1000);
+    // Ported from HA source (hui-thermostat-card.ts): measures .container's own
+    // rendered height, applied as max-width on the dial so it never overflows
+    // .container's overflow:hidden on wide-but-short cards.
+    this._resizeController = new ResizeController(this, {
+      callback: (entries) => {
+        const container = entries[0]?.target.shadowRoot?.querySelector('.container');
+        return container?.clientHeight;
+      },
+    });
   }
 
   set hass(hass) {
@@ -918,234 +827,6 @@ class ChronoHvacCard extends LitElement {
 
   // Effective values: drag override > pending step override > live entity state.
   // Mirrors native's _targetTemperature local-state pattern.
-  _effectiveSingle(attrs) {
-    if (this._dragTarget === 'single') return this._dragTemp.single;
-    if (this._stepOverride.value !== undefined) return this._stepOverride.value;
-    return attrs.temperature;
-  }
-
-  _effectiveLow(attrs) {
-    if (this._dragTarget) return this._dragTemp.low;
-    if (this._stepOverride.low !== undefined) return this._stepOverride.low;
-    return attrs.target_temp_low;
-  }
-
-  _effectiveHigh(attrs) {
-    if (this._dragTarget) return this._dragTemp.high;
-    if (this._stepOverride.high !== undefined) return this._stepOverride.high;
-    return attrs.target_temp_high;
-  }
-
-  _commitStepOverride() {
-    const stateObj = this._stateObj;
-    if (!stateObj) { this._stepOverride = {}; return; }
-    const attrs = stateObj.attributes;
-    const isRange = attrs.target_temp_low !== undefined && attrs.target_temp_high !== undefined;
-    if (isRange) {
-      const low = this._stepOverride.low ?? attrs.target_temp_low;
-      const high = this._stepOverride.high ?? attrs.target_temp_high;
-      this._callService('set_temperature', { target_temp_low: low, target_temp_high: high });
-    } else if (this._stepOverride.value !== undefined) {
-      this._callService('set_temperature', { temperature: this._stepOverride.value });
-    }
-    this._stepOverride = {};
-  }
-
-  // Ported from HA source (_handleButton): accumulates from the last locally-known
-  // value (not the stale server value) so rapid clicks add up correctly during the
-  // debounce window, matching source's this._targetTemperature[target] ?? default.
-  _step(direction, which) {
-    const stateObj = this._stateObj;
-    if (!stateObj) return;
-    const attrs = stateObj.attributes;
-    const step = chGetStep(this.hass, stateObj);
-    const min = attrs.min_temp ?? CH_DEFAULT_MIN_TEMP;
-    const max = attrs.max_temp ?? CH_DEFAULT_MAX_TEMP;
-    const isRange = attrs.target_temp_low !== undefined && attrs.target_temp_high !== undefined;
-
-    if (isRange) {
-      const currentLow = this._effectiveLow(attrs) ?? min;
-      const currentHigh = this._effectiveHigh(attrs) ?? max;
-      if (which === 'low') {
-        const next = chClamp(currentLow + direction * step, min, currentHigh);
-        this._stepOverride = { ...this._stepOverride, low: next };
-      } else {
-        const next = chClamp(currentHigh + direction * step, currentLow, max);
-        this._stepOverride = { ...this._stepOverride, high: next };
-      }
-    } else {
-      const current = this._effectiveSingle(attrs) ?? min;
-      const next = chClamp(current + direction * step, min, max);
-      this._stepOverride = { ...this._stepOverride, value: next };
-    }
-    this._debouncedStepCommit();
-  }
-
-  // ─── Drag interaction ─────────────────────────────────────────────────────
-  // Ported directly from HA source (ha-control-circular-slider.ts:
-  // xy2polar / rad2deg / _getPercentageFromEvent) rather than re-derived geometry.
-  _percentageFromPointer(clientX, clientY, rect) {
-    const cx = rect.left + rect.width / 2;
-    const cy = rect.top + rect.height / 2;
-    const x = clientX - cx;
-    const y = clientY - cy;
-    const phi = Math.atan2(y, x);
-    const deg = (phi * 180) / Math.PI;
-    const offset = (360 - CH_ARC_MAX_ANGLE) / 2;
-    const angle = ((deg + offset - CH_ARC_ROTATE + 360) % 360) - offset;
-    return chClamp(angle / CH_ARC_MAX_ANGLE, 0, 1);
-  }
-
-  // Ported from HA source (_findActiveSlider): nearest-handle selection by value,
-  // not by angle.
-  _findActiveHandle(value, low, high, min, max) {
-    const lo = Math.max(low ?? min, min);
-    const hi = Math.min(high ?? max, max);
-    if (lo >= value) return 'low';
-    if (hi <= value) return 'high';
-    return Math.abs(value - lo) <= Math.abs(value - hi) ? 'low' : 'high';
-  }
-
-  _onPointerDown(ev) {
-    const stateObj = this._stateObj;
-    if (!stateObj || stateObj.state === 'off' || stateObj.state === 'unavailable') return;
-    const attrs = stateObj.attributes;
-    const min = attrs.min_temp ?? CH_DEFAULT_MIN_TEMP;
-    const max = attrs.max_temp ?? CH_DEFAULT_MAX_TEMP;
-    const isRange = attrs.target_temp_low !== undefined && attrs.target_temp_high !== undefined;
-    const rect = this.renderRoot.querySelector('.dial-wrapper').getBoundingClientRect();
-    const percentage = this._percentageFromPointer(ev.clientX, ev.clientY, rect);
-    const rawValue = min + percentage * (max - min);
-
-    if (isRange) {
-      this._dragTarget = this._findActiveHandle(rawValue, attrs.target_temp_low, attrs.target_temp_high, min, max);
-      this._dragTemp = { low: attrs.target_temp_low, high: attrs.target_temp_high };
-    } else {
-      this._dragTarget = 'single';
-      this._dragTemp = { single: attrs.temperature ?? min };
-    }
-
-    this._dialRect = rect;
-    window.addEventListener('pointermove', this._boundPointerMove);
-    window.addEventListener('pointerup', this._boundPointerUp);
-    this._onPointerMove(ev);
-  }
-
-  _onPointerMove(ev) {
-    if (!this._dragTarget) return;
-    const stateObj = this._stateObj;
-    const attrs = stateObj.attributes;
-    const min = attrs.min_temp ?? CH_DEFAULT_MIN_TEMP;
-    const max = attrs.max_temp ?? CH_DEFAULT_MAX_TEMP;
-    const step = chGetStep(this.hass, stateObj);
-    const percentage = this._percentageFromPointer(ev.clientX, ev.clientY, this._dialRect);
-    const rawValue = min + percentage * (max - min);
-    const stepped = chClamp(Math.round(rawValue / step) * step, min, max);
-
-    if (this._dragTarget === 'single') {
-      this._dragTemp = { single: stepped };
-    } else if (this._dragTarget === 'low') {
-      this._dragTemp = { ...this._dragTemp, low: Math.min(stepped, this._dragTemp.high) };
-    } else if (this._dragTarget === 'high') {
-      this._dragTemp = { ...this._dragTemp, high: Math.max(stepped, this._dragTemp.low) };
-    }
-    this.requestUpdate();
-  }
-
-  _onPointerUp() {
-    if (!this._dragTarget) return;
-    if (this._dragTarget === 'single') {
-      this._callService('set_temperature', { temperature: this._dragTemp.single });
-    } else {
-      this._selectedRangeTarget = this._dragTarget;
-      this._callService('set_temperature', {
-        target_temp_low: this._dragTemp.low,
-        target_temp_high: this._dragTemp.high,
-      });
-    }
-    this._dragTarget = null;
-    this._dragTemp = null;
-    window.removeEventListener('pointermove', this._boundPointerMove);
-    window.removeEventListener('pointerup', this._boundPointerUp);
-  }
-
-  // ─── Keyboard accessibility ────────────────────────────────────────────────
-  // Ported from HA source (ha-control-circular-slider.ts: _handleKeyDown/
-  // _handleKeyUp): keydown updates the value visually (reusing the same
-  // _dragTarget/_dragTemp override state as pointer dragging, so holding a key
-  // accumulates correctly across repeated keydown events); keyup commits via
-  // the same immediate (non-debounced) _onPointerUp path used for drag release.
-  // [Disclosed adaptation] native has two independently-focusable slider
-  // elements in dual mode (one per low/high); we use a single shared focusable
-  // control that acts on whichever target is currently selected
-  // (_selectedRangeTarget), same target the step buttons act on.
-  _handleKeyDown(ev) {
-    const A11Y_KEYS = ['ArrowRight', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'];
-    if (!A11Y_KEYS.includes(ev.code)) return;
-    const stateObj = this._stateObj;
-    if (!stateObj || stateObj.state === 'off' || stateObj.state === 'unavailable') return;
-    ev.preventDefault();
-
-    const attrs = stateObj.attributes;
-    const min = attrs.min_temp ?? CH_DEFAULT_MIN_TEMP;
-    const max = attrs.max_temp ?? CH_DEFAULT_MAX_TEMP;
-    const step = chGetStep(this.hass, stateObj);
-    const tenPercentStep = Math.max(step, (max - min) / 10);
-    const isRange = attrs.target_temp_low !== undefined && attrs.target_temp_high !== undefined;
-
-    if (!this._dragTarget) {
-      if (isRange) {
-        this._dragTarget = this._selectedRangeTarget || 'low';
-        this._dragTemp = { low: this._effectiveLow(attrs), high: this._effectiveHigh(attrs) };
-      } else {
-        this._dragTarget = 'single';
-        this._dragTemp = { single: this._effectiveSingle(attrs) };
-      }
-    }
-
-    const currentValue = this._dragTarget === 'single'
-      ? (this._dragTemp.single ?? min)
-      : (this._dragTarget === 'low' ? (this._dragTemp.low ?? min) : (this._dragTemp.high ?? max));
-
-    let next = currentValue;
-    switch (ev.code) {
-      case 'ArrowRight':
-      case 'ArrowUp':
-        next = currentValue + step;
-        break;
-      case 'ArrowLeft':
-      case 'ArrowDown':
-        next = currentValue - step;
-        break;
-      case 'PageUp':
-        next = currentValue + tenPercentStep;
-        break;
-      case 'PageDown':
-        next = currentValue - tenPercentStep;
-        break;
-      case 'Home':
-        next = min;
-        break;
-      case 'End':
-        next = max;
-        break;
-    }
-
-    if (this._dragTarget === 'single') {
-      this._dragTemp = { single: chClamp(next, min, max) };
-    } else if (this._dragTarget === 'low') {
-      this._dragTemp = { ...this._dragTemp, low: chClamp(next, min, this._dragTemp.high ?? max) };
-    } else {
-      this._dragTemp = { ...this._dragTemp, high: chClamp(next, this._dragTemp.low ?? min, max) };
-    }
-    this.requestUpdate();
-  }
-
-  _handleKeyUp(ev) {
-    const A11Y_KEYS = ['ArrowRight', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'];
-    if (!A11Y_KEYS.includes(ev.code)) return;
-    this._onPointerUp();
-  }
 
   // ─── Render ────────────────────────────────────────────────────────────────
   _getAttributeIcon(attribute, value) {
@@ -1207,196 +888,6 @@ class ChronoHvacCard extends LitElement {
     `;
   }
 
-  // Ported from HA source (ha-control-circular-slider.ts: renderArc) — builds one
-  // arc's clear/colored/active layers plus its target dot (a zero-length,
-  // round-linecap stroke segment positioned via dasharray, not x/y coordinates).
-  // `inactive` mirrors source's .inactive class (applied only in the interactive
-  // single/dual branches when the entity is off, not when unavailable, which uses
-  // a separate readonly branch) - hides the arc fill entirely via opacity, leaving
-  // only the plain background ring and the target dot visible.
-  _renderArcGroup(value, mode, min, max, current, colorVar, inactive) {
-    const path = chSvgArc({ x: 0, y: 0, start: 0, end: CH_ARC_MAX_ANGLE, r: CH_ARC_RADIUS });
-    const limit = mode === 'end' ? max : min;
-    const curr = current ?? limit;
-    const target = value ?? limit;
-
-    const showActive = mode === 'end' ? target <= curr : mode === 'start' ? curr <= target : false;
-    const showTarget = value != null;
-
-    const activeArc = showTarget
-      ? (showActive
-          ? (mode === 'end' ? chStrokeDashArc(target, curr, min, max) : chStrokeDashArc(curr, target, min, max))
-          : chStrokeCircleDashArc(target, min, max))
-      : null;
-
-    const coloredArc = mode === 'full'
-      ? chStrokeDashArc(min, max, min, max)
-      : mode === 'end'
-        ? chStrokeDashArc(target, limit, min, max)
-        : chStrokeDashArc(limit, target, min, max);
-
-    const targetCircle = showTarget ? chStrokeCircleDashArc(target, min, max) : null;
-    const dotAngle = showTarget ? chValueToPercentage(target, min, max) * CH_ARC_MAX_ANGLE : 0;
-
-    return svg`
-      <g class="${inactive ? 'ch-inactive' : ''}">
-        <path class="ch-arc ch-arc-clear" d=${path} stroke-dasharray=${coloredArc[0]} stroke-dashoffset=${coloredArc[1]}></path>
-        <path class="ch-arc ch-arc-colored" style="stroke:${colorVar}" d=${path} stroke-dasharray=${coloredArc[0]} stroke-dashoffset=${coloredArc[1]}></path>
-        ${activeArc ? svg`<path class="ch-arc ch-arc-active" style="stroke:${colorVar}" d=${path} stroke-dasharray=${activeArc[0]} stroke-dashoffset=${activeArc[1]}></path>` : ''}
-        ${targetCircle ? svg`
-          <path class="ch-target-border" style="stroke:${colorVar}" d=${path} stroke-dasharray=${targetCircle[0]} stroke-dashoffset=${targetCircle[1]}></path>
-          <path class="ch-target" d=${path} stroke-dasharray=${targetCircle[0]} stroke-dashoffset=${targetCircle[1]}></path>
-        ` : ''}
-        ${showTarget ? svg`
-          <circle class="ch-dot-interaction" transform="rotate(${dotAngle} 0 0)" cx=${CH_ARC_RADIUS} cy="0" r="24" @pointerdown=${this._onPointerDown}></circle>
-        ` : ''}
-      </g>
-    `;
-  }
-
-  _renderDial(stateObj) {
-    const attrs = stateObj.attributes;
-    const mode = stateObj.state;
-    const min = attrs.min_temp ?? CH_DEFAULT_MIN_TEMP;
-    const max = attrs.max_temp ?? CH_DEFAULT_MAX_TEMP;
-    const isRange = attrs.target_temp_low !== undefined && attrs.target_temp_high !== undefined;
-    const current = attrs.current_temperature;
-
-    const trackPath = chSvgArc({ x: 0, y: 0, start: 0, end: CH_ARC_MAX_ANGLE, r: CH_ARC_RADIUS });
-    const showCurrentMarker = current != null && current <= max && current >= min;
-    const currentMarker = showCurrentMarker ? chStrokeCircleDashArc(current, min, max) : null;
-
-    let arcs;
-    if (mode === 'unavailable') {
-      // Ported from HA source (render(), final fallback branch): unavailable
-      // entities always fall to the plain readonly 'full' ring regardless of
-      // whether the entity is normally single/range - no target dot, no
-      // low/high split, matching native exactly.
-      arcs = this._renderArcGroup(null, 'full', min, max, current, 'var(--ch-state-color)');
-    } else if (isRange) {
-      const low = this._effectiveLow(attrs);
-      const high = this._effectiveHigh(attrs);
-      const inactive = !chStateActive(mode);
-      arcs = svg`
-        ${this._renderArcGroup(low, 'start', min, max, current, 'var(--ch-low-color)', inactive)}
-        ${this._renderArcGroup(high, 'end', min, max, current, 'var(--ch-high-color)', inactive)}
-      `;
-    } else {
-      const target = this._effectiveSingle(attrs);
-      // Ported from HA source (render(), single-temperature branch): if the
-      // entity supports exactly one of heat/cool/heat_cool and the current mode
-      // is off/auto, the slider still uses that one mode's style instead of 'full'.
-      const heatCoolModes = (attrs.hvac_modes || []).filter((m) => ['heat', 'cool', 'heat_cool'].includes(m));
-      const effectiveMode = (heatCoolModes.length === 1 && ['off', 'auto'].includes(mode)) ? heatCoolModes[0] : mode;
-      const sliderMode = CH_SLIDER_MODES[effectiveMode] || 'full';
-      arcs = this._renderArcGroup(target, sliderMode, min, max, current, 'var(--ch-state-color)', !chStateActive(mode));
-    }
-
-    return svg`
-      <svg viewBox="0 0 ${CH_ARC_VIEWBOX} ${CH_ARC_VIEWBOX}" class="dial-svg" overflow="visible">
-        <g transform="translate(${CH_ARC_CENTER} ${CH_ARC_CENTER}) rotate(${CH_ARC_ROTATE})">
-          <path class="ch-track-bg" d=${trackPath}></path>
-          ${currentMarker ? svg`<path class="ch-current-marker" d=${trackPath} stroke-dasharray=${currentMarker[0]} stroke-dashoffset=${currentMarker[1]}></path>` : ''}
-          ${arcs}
-          <path
-            class="ch-interaction ${(mode === 'off' || mode === 'unavailable') ? 'disabled' : ''}"
-            d=${trackPath}
-            role="slider"
-            tabindex=${(mode === 'off' || mode === 'unavailable') ? '-1' : '0'}
-            aria-valuemin=${min}
-            aria-valuemax=${max}
-            aria-valuenow=${isRange
-              ? (this._selectedRangeTarget === 'high' ? this._effectiveHigh(attrs) : this._effectiveLow(attrs))
-              : this._effectiveSingle(attrs)}
-            aria-disabled=${mode === 'off' || mode === 'unavailable'}
-            aria-label="Temperature"
-            @pointerdown=${this._onPointerDown}
-            @keydown=${this._handleKeyDown}
-            @keyup=${this._handleKeyUp}
-          ></path>
-        </g>
-      </svg>
-    `;
-  }
-
-  _renderCenter(stateObj) {
-    const attrs = stateObj.attributes;
-    const mode = stateObj.state;
-    const action = attrs.hvac_action;
-    const isRange = attrs.target_temp_low !== undefined && attrs.target_temp_high !== undefined;
-
-    if (mode === 'unavailable') {
-      return html`
-        <div class="ch-info">
-          <p class="ch-label ch-label-disabled">Unavailable</p>
-        </div>
-      `;
-    }
-
-    const step = chGetStep(this.hass, stateObj);
-
-    // Ported from HA source (ha-state-control-climate-temperature.ts: _renderTarget)
-    const digits = String(step).split('.')?.[1]?.length ?? 0;
-    const formatOptions = { minimumFractionDigits: digits, maximumFractionDigits: digits };
-
-    const label = (action && action !== 'off')
-      ? chCapitalize(action)
-      : (CH_HVAC_MODE_LABELS[mode] || chCapitalize(mode));
-
-    if (isRange) {
-      const low = this._effectiveLow(attrs);
-      const high = this._effectiveHigh(attrs);
-      return html`
-        <div class="ch-info">
-          <p class="ch-label">${label}</p>
-          <div class="ch-dual">
-            <button class="ch-target-select ${this._selectedRangeTarget === 'low' ? 'selected' : ''}" @click=${() => { this._selectedRangeTarget = 'low'; }}>
-              <ha-big-number .value=${low} unit="°C" unit-position="top" .formatOptions=${formatOptions}></ha-big-number>
-            </button>
-            <span>–</span>
-            <button class="ch-target-select ${this._selectedRangeTarget === 'high' ? 'selected' : ''}" @click=${() => { this._selectedRangeTarget = 'high'; }}>
-              <ha-big-number .value=${high} unit="°C" unit-position="top" .formatOptions=${formatOptions}></ha-big-number>
-            </button>
-          </div>
-        </div>
-      `;
-    }
-
-    const target = this._effectiveSingle(attrs);
-    return html`
-      <div class="ch-info">
-        <p class="ch-label">${label}</p>
-        ${target != null ? html`<ha-big-number .value=${target} unit="°C" unit-position="top" .formatOptions=${formatOptions}></ha-big-number>` : ''}
-      </div>
-    `;
-  }
-
-  _renderStepButtons(stateObj) {
-    const attrs = stateObj.attributes;
-    const mode = stateObj.state;
-    if (mode === 'off' || mode === 'unavailable') return html``;
-    const isRange = attrs.target_temp_low !== undefined && attrs.target_temp_high !== undefined;
-    const target = isRange ? (this._selectedRangeTarget || 'low') : 'single';
-
-    // Ported from HA source (_renderTemperatureButtons): dual-mode buttons only
-    // get a colored outline (heat for low, cool for high) while active.
-    let buttonColor;
-    if (isRange && chStateActive(mode)) {
-      buttonColor = target === 'high' ? chStateColorCss(stateObj, 'cool') : chStateColorCss(stateObj, 'heat');
-    }
-    const buttonStyle = buttonColor ? `--md-sys-color-outline:${buttonColor}` : '';
-
-    return html`
-      <div class="step-buttons">
-        <ha-outlined-icon-button style=${buttonStyle} @click=${() => this._step(-1, target)}>
-          <ha-icon icon="mdi:minus"></ha-icon>
-        </ha-outlined-icon-button>
-        <ha-outlined-icon-button style=${buttonStyle} @click=${() => this._step(1, target)}>
-          <ha-icon icon="mdi:plus"></ha-icon>
-        </ha-outlined-icon-button>
-      </div>
-    `;
-  }
 
   render() {
     if (!this.hass || !this._config) return html``;
@@ -1411,19 +902,6 @@ class ChronoHvacCard extends LitElement {
 
     const attrs = stateObj.attributes;
     const mode = stateObj.state;
-    const action = attrs.hvac_action;
-    const active = chStateActive(mode);
-    const stateColor = chStateColorCss(stateObj);
-    const lowColor = chStateColorCss(stateObj, active ? 'heat' : 'off');
-    const highColor = chStateColorCss(stateObj, active ? 'cool' : 'off');
-
-    // Ported from HA source (ha-state-control-climate-temperature.ts): actionColor
-    // is only set for a genuinely active action (not idle/off), mapped via the
-    // verified CLIMATE_HVAC_ACTION_TO_MODE table.
-    let actionColor;
-    if (action && action !== 'idle' && action !== 'off' && active) {
-      actionColor = chStateColorCss(stateObj, CH_HVAC_ACTION_TO_MODE[action]);
-    }
 
     const hvacModes = attrs.hvac_modes || [];
     const presetModes = attrs.preset_modes || [];
@@ -1454,9 +932,7 @@ class ChronoHvacCard extends LitElement {
     const showMoreInfo = this._config.show_more_info_button;
 
     return html`
-      <ha-card
-        style="--ch-state-color:${stateColor};--ch-low-color:${lowColor};--ch-high-color:${highColor};${actionColor ? `--action-color:${actionColor};` : ''}"
-      >
+      <ha-card>
         ${name ? html`<p class="title">${name}</p>` : ''}
 
         ${showMoreInfo ? html`
@@ -1483,11 +959,12 @@ class ChronoHvacCard extends LitElement {
         ` : ''}
 
         <div class="container">
-          <div class="dial-wrapper">
-            ${this._renderDial(stateObj)}
-            ${this._renderCenter(stateObj)}
-            ${this._renderStepButtons(stateObj)}
-          </div>
+          <ha-state-control-climate-temperature
+            style=${this._resizeController.value ? `max-width:${this._resizeController.value}px` : ''}
+            prevent-interaction-on-scroll
+            show-secondary
+            .stateObj=${stateObj}
+          ></ha-state-control-climate-temperature>
         </div>
 
         ${featureRows.length ? html`
@@ -1592,183 +1069,8 @@ class ChronoHvacCard extends LitElement {
       display: block;
       padding-top: 100%;
     }
-    .container > .dial-wrapper {
+    .container > * {
       padding: 8px;
-      box-sizing: border-box;
-    }
-    .dial-wrapper {
-      position: relative;
-      width: 320px;
-      max-width: 100%;
-      aspect-ratio: 1;
-      container-type: inline-size;
-      container-name: chdial;
-    }
-    .dial-wrapper::after {
-      display: block;
-      content: "";
-      position: absolute;
-      top: -10%;
-      left: -10%;
-      right: -10%;
-      bottom: -10%;
-      background: radial-gradient(
-        50% 50% at 50% 50%,
-        var(--action-color, transparent) 0%,
-        transparent 100%
-      );
-      opacity: 0.15;
-      pointer-events: none;
-    }
-    .dial-svg {
-      width: 100%;
-      height: 100%;
-      display: block;
-      pointer-events: none;
-    }
-    .dial-svg g { fill: none; }
-    .ch-interaction {
-      fill: none;
-      stroke: transparent;
-      stroke-linecap: round;
-      stroke-width: 48px;
-      pointer-events: auto;
-      cursor: pointer;
-      touch-action: none;
-      outline: none;
-    }
-    .ch-interaction:focus-visible {
-      stroke: var(--primary-color);
-      stroke-width: 2px;
-      opacity: 0.5;
-    }
-    .ch-interaction.disabled {
-      pointer-events: none;
-      cursor: initial;
-    }
-    .ch-dot-interaction {
-      fill: transparent;
-      pointer-events: none;
-      touch-action: none;
-    }
-    @media (pointer: coarse) {
-      .ch-interaction {
-        pointer-events: none;
-      }
-      .ch-dot-interaction {
-        pointer-events: auto;
-      }
-    }
-    .ch-track-bg {
-      fill: none;
-      stroke: var(--disabled-color);
-      opacity: 0.3;
-      stroke-linecap: round;
-      stroke-width: 24px;
-    }
-    .ch-current-marker {
-      fill: none;
-      stroke-linecap: round;
-      stroke-width: 8px;
-      stroke: var(--primary-text-color);
-      opacity: 0.5;
-    }
-    .ch-arc {
-      fill: none;
-      stroke-linecap: round;
-      stroke-width: 24px;
-    }
-    .ch-inactive .ch-arc {
-      opacity: 0;
-    }
-    .ch-arc-clear {
-      stroke: var(--clear-background-color, var(--disabled-color));
-    }
-    .ch-arc-colored {
-      opacity: 0.5;
-    }
-    .ch-target {
-      fill: none;
-      stroke-linecap: round;
-      stroke-width: 18px;
-      stroke: white;
-    }
-    .ch-target-border {
-      fill: none;
-      stroke-linecap: round;
-      stroke-width: 24px;
-      stroke: white;
-    }
-    .ch-info {
-      position: absolute;
-      top: 0; left: 0; right: 0; bottom: 0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      transform: translateY(-16px);
-      pointer-events: none;
-      gap: var(--ha-space-2, 4px);
-    }
-    .ch-info * { margin: 0; }
-    .ch-label {
-      width: 60%;
-      font-size: var(--ha-font-size-l, 16px);
-      font-weight: var(--ha-font-weight-medium, 500);
-      text-align: center;
-      color: var(--action-color, inherit);
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
-      min-height: 1.5em;
-      white-space: nowrap;
-    }
-    .ch-label-disabled {
-      color: var(--secondary-text-color);
-    }
-    ha-big-number {
-      color: var(--primary-text-color);
-    }
-    .ch-dual {
-      display: flex;
-      flex-direction: row;
-      align-items: center;
-      gap: var(--ha-space-4, 12px);
-      font-size: 24px;
-      color: var(--secondary-text-color);
-    }
-    .ch-target-select {
-      background: none;
-      border: none;
-      padding: 2px 4px;
-      border-radius: 8px;
-      cursor: pointer;
-      pointer-events: auto;
-      font: inherit;
-      color: inherit;
-    }
-    .ch-target-select.selected {
-      outline: 1px solid var(--secondary-text-color);
-    }
-    .step-buttons {
-      position: absolute;
-      bottom: 10px;
-      left: 0;
-      right: 0;
-      margin: 0 auto;
-      gap: var(--ha-space-6, 24px);
-      display: flex;
-      flex-direction: row;
-      align-items: center;
-      justify-content: center;
-      pointer-events: none;
-    }
-    .step-buttons > * { pointer-events: auto; }
-    .step-buttons ha-outlined-icon-button {
-      --md-outlined-icon-button-container-width: 48px;
-      --md-outlined-icon-button-container-height: 48px;
-      --md-outlined-icon-button-icon-size: 24px;
     }
     .ch-controls-container {
       display: flex;
@@ -1807,24 +1109,6 @@ class ChronoHvacCard extends LitElement {
       .ch-controls-scroll.multiline > * { width: 140px; }
     }
 
-    /* Ported from HA source (state-control-circular-slider-style.ts):
-       width<250=md, <190=sm, <130=xs breakpoints on the dial container.
-       [Approximation, disclosed] source's ".state" selector role at these
-       breakpoints wasn't independently confirmed; mapped to .ch-label here. */
-    @container chdial (max-width: 249px) {
-      .step-buttons { display: none; }
-      ha-big-number { font-size: 44px; }
-      .ch-label { font-size: var(--ha-font-size-3xl); }
-    }
-    @container chdial (max-width: 189px) {
-      ha-big-number { font-size: var(--ha-font-size-4xl); }
-      .ch-label { font-size: var(--ha-font-size-2xl); }
-      .ch-info { margin-top: 12px; gap: 2px; }
-    }
-    @container chdial (max-width: 129px) {
-      ha-big-number { font-size: var(--ha-font-size-4xl); }
-      .ch-label { display: none; }
-    }
   `;
 }
 customElements.define('chrono-hvac-card', ChronoHvacCard);
