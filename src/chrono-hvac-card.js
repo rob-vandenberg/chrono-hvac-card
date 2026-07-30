@@ -2,9 +2,49 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.1.23';
+const CARD_VERSION = '1.2.24';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.2.24: Major structural rework distinguishing dashboard-card infrastructure
+//          (sourced from hui-thermostat-card.ts, re-fetched fresh - title,
+//          container/sizing model, getGridOptions, touch-only dot interaction,
+//          real ha-icon-button) from dialog-content styling (sourced from
+//          more-info-climate.ts and the shared dial components - responsive
+//          breakpoints, label sizing, action-color glow):
+//          1) Title reverted to a literal <p class="title"> matching
+//          hui-thermostat-card.ts exactly, replacing the ha-card.header
+//          approach - the earlier DevTools h1.card-header finding was measuring
+//          the more-info DIALOG's own title bar chrome, not applicable to a card.
+//          2) Removed the .content wrapper entirely; ha-card's direct children
+//          are now .title, .more-info, .readouts, .dial-wrapper, and the
+//          controls container - matching native's flatter structure. Dial sizing
+//          now uses flex:1 + aspect-ratio:1 on .dial-wrapper directly (modern
+//          CSS equivalent of source's flex:1 + padding-top:100% hack).
+//          3) Added getGridOptions() matching source (columns:12, rows:5,
+//          min_rows:2, min_columns:6) for HA's sections-type dashboards.
+//          4) Touch-only dot interaction: full ring draggable normally: on
+//          coarse/touch pointers (@media (pointer:coarse), standing in for
+//          source's JS isTouch check), only a small dot-sized hit circle at the
+//          target position is interactive, matching source's
+//          prevent-interaction-on-scroll intent (avoids fighting page-scroll
+//          swipes on mobile dashboards).
+//          5) More-info button is now the real <ha-icon-button> component
+//          (verified source: accepts a slotted <ha-icon> when .path isn't set),
+//          replacing the earlier plain div+ha-icon substitute.
+//          6) Responsive breakpoints ported from state-control-circular-slider-
+//          style.ts via CSS container queries on .dial-wrapper at the verified
+//          130/190/250px thresholds - step buttons hide below 250px, label
+//          hides below 130px, ha-big-number/.ch-label font sizes step down.
+//          [Approximation, disclosed] source's ".state" breakpoint selector
+//          role wasn't independently confirmed; mapped to .ch-label as the
+//          closest equivalent in our structure.
+//          7) .ch-label now matches source's real sizing: width:60%,
+//          -webkit-line-clamp:2, min-height:1.5em, white-space:nowrap,
+//          color:var(--action-color, inherit) (was color:inherit only).
+//          8) Added the real actionColor computation (action && action!=='idle'
+//          && action!=='off' && active, mapped via CLIMATE_HVAC_ACTION_TO_MODE,
+//          verified from climate.ts already on disk) as --action-color, plus
+//          the radial-gradient glow effect on the dial matching source exactly.
 // v1.1.23: Second full source-comparison review pass, two findings fixed:
 //          1) Off-state arc hiding: verified from source
 //          (ha-control-circular-slider.ts: ".inactive .arc{opacity:0}", applied
@@ -277,6 +317,12 @@ const CH_ARC_CENTER = 160;                                       // viewBox/2, t
 const CH_SLIDER_MODES = {
   auto: 'full', cool: 'end', dry: 'full', fan_only: 'full',
   heat: 'start', heat_cool: 'full', off: 'full',
+};
+
+// Verified from HA source (src/data/climate.ts: CLIMATE_HVAC_ACTION_TO_MODE)
+const CH_HVAC_ACTION_TO_MODE = {
+  cooling: 'cool', defrosting: 'heat', drying: 'dry', fan: 'fan_only',
+  heating: 'heat', idle: 'off', off: 'off', preheating: 'heat',
 };
 
 const CH_DEFAULT_MIN_TEMP = 7;
@@ -777,6 +823,17 @@ class ChronoHvacCard extends LitElement {
     return 7;
   }
 
+  // Ported from HA source (hui-thermostat-card.ts: getGridOptions) — dashboard-
+  // card infrastructure for HA's sections-type dashboards.
+  getGridOptions() {
+    return {
+      columns: 12,
+      rows: 5,
+      min_columns: 6,
+      min_rows: 2,
+    };
+  }
+
   static getConfigElement() {
     return document.createElement('chrono-hvac-card-editor');
   }
@@ -1140,6 +1197,7 @@ class ChronoHvacCard extends LitElement {
         : chStrokeDashArc(limit, target, min, max);
 
     const targetCircle = showTarget ? chStrokeCircleDashArc(target, min, max) : null;
+    const dotAngle = showTarget ? chValueToPercentage(target, min, max) * CH_ARC_MAX_ANGLE : 0;
 
     return svg`
       <g class="${inactive ? 'ch-inactive' : ''}">
@@ -1149,6 +1207,9 @@ class ChronoHvacCard extends LitElement {
         ${targetCircle ? svg`
           <path class="ch-target-border" style="stroke:${colorVar}" d=${path} stroke-dasharray=${targetCircle[0]} stroke-dashoffset=${targetCircle[1]}></path>
           <path class="ch-target" d=${path} stroke-dasharray=${targetCircle[0]} stroke-dashoffset=${targetCircle[1]}></path>
+        ` : ''}
+        ${showTarget ? svg`
+          <circle class="ch-dot-interaction" transform="rotate(${dotAngle} 0 0)" cx=${CH_ARC_RADIUS} cy="0" r="24" @pointerdown=${this._onPointerDown}></circle>
         ` : ''}
       </g>
     `;
@@ -1311,10 +1372,19 @@ class ChronoHvacCard extends LitElement {
 
     const attrs = stateObj.attributes;
     const mode = stateObj.state;
+    const action = attrs.hvac_action;
     const active = chStateActive(mode);
     const stateColor = chStateColorCss(stateObj);
     const lowColor = chStateColorCss(stateObj, active ? 'heat' : 'off');
     const highColor = chStateColorCss(stateObj, active ? 'cool' : 'off');
+
+    // Ported from HA source (ha-state-control-climate-temperature.ts): actionColor
+    // is only set for a genuinely active action (not idle/off), mapped via the
+    // verified CLIMATE_HVAC_ACTION_TO_MODE table.
+    let actionColor;
+    if (action && action !== 'idle' && action !== 'off' && active) {
+      actionColor = chStateColorCss(stateObj, CH_HVAC_ACTION_TO_MODE[action]);
+    }
 
     const hvacModes = attrs.hvac_modes || [];
     const presetModes = attrs.preset_modes || [];
@@ -1346,47 +1416,46 @@ class ChronoHvacCard extends LitElement {
 
     return html`
       <ha-card
-        .header=${name}
-        style="--ch-state-color:${stateColor};--ch-low-color:${lowColor};--ch-high-color:${highColor}"
+        style="--ch-state-color:${stateColor};--ch-low-color:${lowColor};--ch-high-color:${highColor};${actionColor ? `--action-color:${actionColor};` : ''}"
       >
+        ${name ? html`<p class="title">${name}</p>` : ''}
+
         ${showMoreInfo ? html`
-          <div class="more-info" @click=${this._handleMoreInfo}>
+          <ha-icon-button class="more-info" label="Show more info" @click=${this._handleMoreInfo} tabindex="0">
             <ha-icon icon="mdi:dots-vertical"></ha-icon>
+          </ha-icon-button>
+        ` : ''}
+
+        ${showTemp || showHumidity ? html`
+          <div class="readouts ${showTemp && showHumidity ? '' : 'single'}">
+            ${showTemp ? html`
+              <div class="readout">
+                <div class="readout-label">Current temperature</div>
+                <div class="readout-value">${attrs.current_temperature}°C</div>
+              </div>
+            ` : ''}
+            ${showHumidity ? html`
+              <div class="readout">
+                <div class="readout-label">Current humidity</div>
+                <div class="readout-value">${attrs.current_humidity}%</div>
+              </div>
+            ` : ''}
           </div>
         ` : ''}
 
-        <div class="content">
-          ${showTemp || showHumidity ? html`
-            <div class="readouts ${showTemp && showHumidity ? '' : 'single'}">
-              ${showTemp ? html`
-                <div class="readout">
-                  <div class="readout-label">Current temperature</div>
-                  <div class="readout-value">${attrs.current_temperature}°C</div>
-                </div>
-              ` : ''}
-              ${showHumidity ? html`
-                <div class="readout">
-                  <div class="readout-label">Current humidity</div>
-                  <div class="readout-value">${attrs.current_humidity}%</div>
-                </div>
-              ` : ''}
-            </div>
-          ` : ''}
-
-          <div class="dial-wrapper">
-            ${this._renderDial(stateObj)}
-            ${this._renderCenter(stateObj)}
-            ${this._renderStepButtons(stateObj)}
-          </div>
-
-          ${featureRows.length ? html`
-            <div class="ch-controls-container">
-              <div class="${scrollClass}">
-                ${featureRows}
-              </div>
-            </div>
-          ` : ''}
+        <div class="dial-wrapper">
+          ${this._renderDial(stateObj)}
+          ${this._renderCenter(stateObj)}
+          ${this._renderStepButtons(stateObj)}
         </div>
+
+        ${featureRows.length ? html`
+          <div class="ch-controls-container">
+            <div class="${scrollClass}">
+              ${featureRows}
+            </div>
+          </div>
+        ` : ''}
       </ha-card>
     `;
   }
@@ -1394,19 +1463,37 @@ class ChronoHvacCard extends LitElement {
   static styles = css`
     :host {
       display: block;
+      position: relative;
+      height: 100%;
       font-family: var(--ha-font-family-body, inherit);
     }
     ha-card {
+      position: relative;
+      height: 100%;
+      width: 100%;
       padding: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
       background: var(--card-background-color, #1a1a1a);
       color: var(--primary-text-color, #fff);
       border-radius: 12px;
+      overflow: hidden;
+      box-sizing: border-box;
     }
-    .content {
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-      padding: 8px 16px 16px 16px;
+    .title {
+      width: 100%;
+      font-size: var(--ha-font-size-l);
+      line-height: var(--ha-line-height-expanded);
+      padding: 8px 30px 8px 30px;
+      margin: 0;
+      text-align: center;
+      box-sizing: border-box;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex: none;
     }
     .more-info {
       position: absolute;
@@ -1418,9 +1505,6 @@ class ChronoHvacCard extends LitElement {
       border-radius: var(--ha-border-radius-pill);
       color: var(--secondary-text-color);
       direction: var(--direction);
-      display: flex;
-      align-items: center;
-      padding: 8px;
     }
     .warning {
       color: var(--error-color, #db4437);
@@ -1430,6 +1514,10 @@ class ChronoHvacCard extends LitElement {
       display: grid;
       grid-template-columns: 1fr 1fr;
       text-align: center;
+      width: 100%;
+      box-sizing: border-box;
+      padding: 0 16px;
+      flex: none;
     }
     .readouts.single {
       display: flex;
@@ -1450,10 +1538,31 @@ class ChronoHvacCard extends LitElement {
     }
     .dial-wrapper {
       position: relative;
-      width: 70%;
-      max-width: 320px;
-      margin: 8px auto 0;
+      flex: 1;
+      width: 100%;
+      max-width: 100%;
       aspect-ratio: 1;
+      min-height: 0;
+      box-sizing: border-box;
+      padding: 8px;
+      container-type: inline-size;
+      container-name: chdial;
+    }
+    .dial-wrapper::after {
+      display: block;
+      content: "";
+      position: absolute;
+      top: -10%;
+      left: -10%;
+      right: -10%;
+      bottom: -10%;
+      background: radial-gradient(
+        50% 50% at 50% 50%,
+        var(--action-color, transparent) 0%,
+        transparent 100%
+      );
+      opacity: 0.15;
+      pointer-events: none;
     }
     .dial-svg {
       width: 100%;
@@ -1480,6 +1589,19 @@ class ChronoHvacCard extends LitElement {
     .ch-interaction.disabled {
       pointer-events: none;
       cursor: initial;
+    }
+    .ch-dot-interaction {
+      fill: transparent;
+      pointer-events: none;
+      touch-action: none;
+    }
+    @media (pointer: coarse) {
+      .ch-interaction {
+        pointer-events: none;
+      }
+      .ch-dot-interaction {
+        pointer-events: auto;
+      }
     }
     .ch-track-bg {
       fill: none;
@@ -1534,10 +1656,17 @@ class ChronoHvacCard extends LitElement {
     }
     .ch-info * { margin: 0; }
     .ch-label {
+      width: 60%;
       font-size: var(--ha-font-size-l, 16px);
       font-weight: var(--ha-font-weight-medium, 500);
       text-align: center;
-      color: inherit;
+      color: var(--action-color, inherit);
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      min-height: 1.5em;
+      white-space: nowrap;
     }
     .ch-label-disabled {
       color: var(--secondary-text-color);
@@ -1588,8 +1717,11 @@ class ChronoHvacCard extends LitElement {
     .ch-controls-container {
       display: flex;
       flex-direction: row;
-      margin-top: 8px;
       justify-content: center;
+      flex: none;
+      width: 100%;
+      box-sizing: border-box;
+      padding: 0 12px 12px 12px;
     }
     .ch-controls-scroll {
       display: flex;
@@ -1617,6 +1749,25 @@ class ChronoHvacCard extends LitElement {
       .ch-controls-scroll.items-4 { max-width: 300px; }
       .ch-controls-scroll.items-3 > * { max-width: 140px; }
       .ch-controls-scroll.multiline > * { width: 140px; }
+    }
+
+    /* Ported from HA source (state-control-circular-slider-style.ts):
+       width<250=md, <190=sm, <130=xs breakpoints on the dial container.
+       [Approximation, disclosed] source's ".state" selector role at these
+       breakpoints wasn't independently confirmed; mapped to .ch-label here. */
+    @container chdial (max-width: 249px) {
+      .step-buttons { display: none; }
+      ha-big-number { font-size: 44px; }
+      .ch-label { font-size: var(--ha-font-size-3xl); }
+    }
+    @container chdial (max-width: 189px) {
+      ha-big-number { font-size: var(--ha-font-size-4xl); }
+      .ch-label { font-size: var(--ha-font-size-2xl); }
+      .ch-info { margin-top: 12px; gap: 2px; }
+    }
+    @container chdial (max-width: 129px) {
+      ha-big-number { font-size: var(--ha-font-size-4xl); }
+      .ch-label { display: none; }
     }
   `;
 }
