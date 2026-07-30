@@ -2,9 +2,17 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.2.29';
+const CARD_VERSION = '1.2.30';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.2.30: Restored the max-width capping behavior removed in v1.2.29, using
+//          the browser's native, built-in ResizeObserver instead of the
+//          CORS-blocked @lit-labs/observers package - zero import, zero CDN
+//          dependency, same measurement/result as source's ResizeController
+//          (measures .container's rendered height, applied as max-width on the
+//          dial). Set up once in firstUpdated() (observing .container),
+//          disconnected in disconnectedCallback(). New _containerHeight
+//          reactive property holds the measured value.
 // v1.2.29: Fix v1.2.27/28's fatal load failure - confirmed via console output
 //          that unpkg.com does not serve @lit-labs/observers with the CORS
 //          headers browsers require, so the import threw and the whole card
@@ -749,9 +757,34 @@ customElements.define('chrono-hvac-card-editor', ChronoHvacCardEditor);
 
 // ─── Card ─────────────────────────────────────────────────────────────────────
 class ChronoHvacCard extends LitElement {
+  static properties = {
+    _containerHeight: { state: true },
+  };
+
   constructor() {
     super();
     this._attrIconCache = {};
+    this._containerHeight = undefined;
+  }
+
+  // Native browser ResizeObserver - built in, no import, no CDN/CORS risk.
+  // Does the same job the (broken, CDN-blocked) @lit-labs/observers
+  // ResizeController was meant to: measures .container's own rendered height,
+  // applied as max-width on the dial so it doesn't overflow .container's
+  // overflow:hidden on wide-but-short cards.
+  firstUpdated() {
+    const container = this.renderRoot.querySelector('.container');
+    if (!container) return;
+    this._resizeObserver = new ResizeObserver((entries) => {
+      const height = entries[0]?.contentRect?.height;
+      if (height) this._containerHeight = height;
+    });
+    this._resizeObserver.observe(container);
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this._resizeObserver?.disconnect();
   }
 
   set hass(hass) {
@@ -963,6 +996,7 @@ class ChronoHvacCard extends LitElement {
 
         <div class="container">
           <ha-state-control-climate-temperature
+            style=${this._containerHeight ? `max-width:${this._containerHeight}px` : ''}
             prevent-interaction-on-scroll
             show-secondary
             .stateObj=${stateObj}
