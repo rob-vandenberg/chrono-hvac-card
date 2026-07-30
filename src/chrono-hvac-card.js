@@ -2,9 +2,25 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.0.17';
+const CARD_VERSION = '1.0.18';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.0.18: Structural fix for the +/- buttons triggering a spurious arc drag
+//          (Rule 6 - fixed the cause, not the symptom). Verified from source
+//          (ha-control-circular-slider.ts): native attaches drag interaction ONLY
+//          to a dedicated invisible <path> tracing the ring geometry
+//          (stroke:transparent, pointer-events:auto, stroke-width = visible 24px +
+//          2x12px margin = 48px), with the whole <svg> set to pointer-events:none.
+//          It is never attached to a generic wrapper div. Replicated exactly:
+//          pointerdown listener moved off .dial-wrapper entirely, onto a new
+//          .ch-interaction path inside the SVG with the same 48px hit-band.
+//          Since the event now originates on the path (whose bounding box is the
+//          arc shape, not a centered square), _onPointerDown now reads
+//          .dial-wrapper's rect via renderRoot.querySelector instead of
+//          ev.currentTarget, keeping center-of-dial math correct. Buttons live
+//          outside the <svg> as siblings, so pointerdown events starting on them
+//          can never reach this listener at all, by construction - not by
+//          stopPropagation.
 // v1.0.17: Change show_more_info_button default from true to false.
 // v1.0.16: Fix real-time updates — the hass setter never called requestUpdate(),
 //          so Lit never re-rendered on incoming HA state pushes (hass is
@@ -741,7 +757,7 @@ class ChronoHvacCard extends LitElement {
     const min = attrs.min_temp ?? CH_DEFAULT_MIN_TEMP;
     const max = attrs.max_temp ?? CH_DEFAULT_MAX_TEMP;
     const isRange = attrs.target_temp_low !== undefined && attrs.target_temp_high !== undefined;
-    const rect = ev.currentTarget.getBoundingClientRect();
+    const rect = this.renderRoot.querySelector('.dial-wrapper').getBoundingClientRect();
     const percentage = this._percentageFromPointer(ev.clientX, ev.clientY, rect);
     const rawValue = min + percentage * (max - min);
 
@@ -926,6 +942,11 @@ class ChronoHvacCard extends LitElement {
           <path class="ch-track-bg" d=${trackPath}></path>
           ${currentMarker ? svg`<path class="ch-current-marker" d=${trackPath} stroke-dasharray=${currentMarker[0]} stroke-dashoffset=${currentMarker[1]}></path>` : ''}
           ${arcs}
+          <path
+            class="ch-interaction ${mode === 'off' ? 'disabled' : ''}"
+            d=${trackPath}
+            @pointerdown=${this._onPointerDown}
+          ></path>
         </g>
       </svg>
     `;
@@ -1062,7 +1083,7 @@ class ChronoHvacCard extends LitElement {
             </div>
           ` : ''}
 
-          <div class="dial-wrapper" @pointerdown=${this._onPointerDown}>
+          <div class="dial-wrapper">
             ${this._renderDial(stateObj)}
             ${this._renderCenter(stateObj)}
             ${this._renderStepButtons(stateObj)}
@@ -1143,15 +1164,27 @@ class ChronoHvacCard extends LitElement {
       max-width: 320px;
       margin: 0 auto;
       aspect-ratio: 1;
-      touch-action: none;
-      cursor: pointer;
     }
     .dial-svg {
       width: 100%;
       height: 100%;
       display: block;
+      pointer-events: none;
     }
     .dial-svg g { fill: none; }
+    .ch-interaction {
+      fill: none;
+      stroke: transparent;
+      stroke-linecap: round;
+      stroke-width: 48px;
+      pointer-events: auto;
+      cursor: pointer;
+      touch-action: none;
+    }
+    .ch-interaction.disabled {
+      pointer-events: none;
+      cursor: initial;
+    }
     .ch-track-bg {
       fill: none;
       stroke: var(--disabled-color);
