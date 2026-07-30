@@ -2,9 +2,26 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.2.30';
+const CARD_VERSION = '1.2.31';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.2.31: Fixed v1.2.30's ResizeObserver to literally match hui-thermostat-
+//          card.ts's ResizeController, verified against source: (1) now
+//          observes the host card element itself (`this`), not .container
+//          directly, matching source's `new ResizeController(this, {...})`;
+//          (2) the callback no longer trusts the ResizeObserver entry's own
+//          contentRect - it re-queries .container fresh from the shadow root
+//          on every callback and reads its live clientHeight, matching
+//          source's `entries[0]?.target.shadowRoot?.querySelector(".container")
+//          ?.clientHeight` exactly; (3) removed the `if (height)` guard -
+//          value is now assigned unconditionally every callback, matching
+//          source (source has no guard). Root cause of v1.2.30's tiny-dial/
+//          missing-buttons bug: observing .container directly meant a
+//          transient early measurement (before the child custom element
+//          upgraded) could lock in permanently, since .container's own box
+//          height is set by flex:1 within a fixed-height ha-card and never
+//          resizes again on its own to trigger a correcting callback.
+//          disconnectedCallback() and all CSS unchanged - already correct.
 // v1.2.30: Restored the max-width capping behavior removed in v1.2.29, using
 //          the browser's native, built-in ResizeObserver instead of the
 //          CORS-blocked @lit-labs/observers package - zero import, zero CDN
@@ -773,13 +790,11 @@ class ChronoHvacCard extends LitElement {
   // applied as max-width on the dial so it doesn't overflow .container's
   // overflow:hidden on wide-but-short cards.
   firstUpdated() {
-    const container = this.renderRoot.querySelector('.container');
-    if (!container) return;
     this._resizeObserver = new ResizeObserver((entries) => {
-      const height = entries[0]?.contentRect?.height;
-      if (height) this._containerHeight = height;
+      const container = entries[0]?.target.shadowRoot?.querySelector('.container');
+      this._containerHeight = container?.clientHeight;
     });
-    this._resizeObserver.observe(container);
+    this._resizeObserver.observe(this);
   }
 
   disconnectedCallback() {
