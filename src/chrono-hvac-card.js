@@ -2,9 +2,12 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.2.33';
+const CARD_VERSION = '1.2.34';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.2.34: Add margin-bottom: var(--ha-space-10) to .readouts, matching
+//          more-info-climate.ts's .current class exactly (was missing).
+//          Fixes tight current-temp-to-arc spacing.
 // v1.2.33: Fix title alignment: ha-card is plain block again (matching v1.1.23),
 //          flex/align-items:center layout moved to new .content wrapper div.
 //          ha-card.header's internal h1 was being centered/shrunk by
@@ -1092,6 +1095,7 @@ class ChronoHvacCard extends LitElement {
       width: 100%;
       box-sizing: border-box;
       padding: 0 16px;
+      margin-bottom: var(--ha-space-10);
       flex: none;
     }
     .readouts.single {
