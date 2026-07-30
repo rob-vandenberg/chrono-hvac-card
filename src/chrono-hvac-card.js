@@ -2,9 +2,18 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.2.36';
+const CARD_VERSION = '1.2.37';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.2.37: 1) .readouts padding-top 0->12px. 2) [Workaround, disclosed] title's
+//          padding-bottom cannot be reduced directly - it's inside ha-card's own
+//          shadow DOM with no exposed hook - so .content gets margin-top:-12px
+//          instead, same visual result via a different mechanism. 3) Fixed
+//          v1.2.33 regression: .more-info was nested inside .content (anchoring
+//          position:absolute to .content's top, next to readouts, not the
+//          title) - moved back to a direct child of ha-card, and re-added
+//          position:relative to ha-card (was moved to .content only in v1.2.33,
+//          leaving ha-card without a positioning context).
 // v1.2.36: [Disclosed, not source-verified] User-measured: .container margin-
 //          bottom 14px->16px (+2px), .ch-controls-container margin-bottom
 //          6px->4px (-2px). Net-zero swap: shifts controls block down 2px
@@ -1012,13 +1021,12 @@ class ChronoHvacCard extends LitElement {
 
     return html`
       <ha-card .header=${name}>
-        <div class="content">
         ${showMoreInfo ? html`
           <ha-icon-button class="more-info" label="Show more info" @click=${this._handleMoreInfo} tabindex="0">
             <ha-icon icon="mdi:dots-vertical"></ha-icon>
           </ha-icon-button>
         ` : ''}
-
+        <div class="content">
         ${showTemp || showHumidity ? html`
           <div class="readouts ${showTemp && showHumidity ? '' : 'single'}">
             ${showTemp ? html`
@@ -1065,6 +1073,7 @@ class ChronoHvacCard extends LitElement {
       font-family: var(--ha-font-family-body, inherit);
     }
     ha-card {
+      position: relative;
       padding: 0;
       background: var(--card-background-color, #1a1a1a);
       color: var(--primary-text-color, #fff);
@@ -1075,6 +1084,7 @@ class ChronoHvacCard extends LitElement {
       position: relative;
       height: 100%;
       width: 100%;
+      margin-top: -12px;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -1103,7 +1113,7 @@ class ChronoHvacCard extends LitElement {
       text-align: center;
       width: 100%;
       box-sizing: border-box;
-      padding: 0 16px;
+      padding: 12px 16px 0 16px;
       margin-bottom: 26px;
       flex: none;
     }
