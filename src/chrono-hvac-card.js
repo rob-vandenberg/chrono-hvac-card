@@ -2,9 +2,19 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.2.39';
+const CARD_VERSION = '1.2.40';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.2.40: Removed height:100% from .card-content. Was circular now that
+//          getGridOptions() no longer forces a fixed pixel height on ha-card
+//          (v1.2.39): a child asking for 100% of a parent whose own height
+//          is determined by that same child has no definite value to
+//          resolve against, so the browser let .card-content overshoot
+//          ha-card's real box - confirmed by measurement: ha-card bottom
+//          edge at 718.8, .ch-controls-container (mode buttons) bottom edge
+//          at 761.8, a 43px overflow past the card's own border. Content
+//          (title/readouts/arc/buttons) now correctly determines the card's
+//          height, with nothing fighting against it.
 // v1.2.39: Deleted getGridOptions() entirely. Per explicit project rule: the
 //          card must contain zero code that knows about or adapts to any
 //          specific container/layout system (sections, masonry, panel, etc).
@@ -1105,7 +1115,6 @@ class ChronoHvacCard extends LitElement {
     }
     .card-content {
       position: relative;
-      height: 100%;
       width: 100%;
       margin-top: -12px;
       display: flex;
