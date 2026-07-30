@@ -2,9 +2,21 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.1.20';
+const CARD_VERSION = '1.1.21';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.1.21: Unavailable-state handling now a verified port, not an invention -
+//          read further into ha-state-control-climate-temperature.ts than
+//          before and found the real fallback branch. Dial now forces the
+//          plain readonly 'full' ring (no target dot, no low/high split)
+//          regardless of whether the entity is normally single/range mode,
+//          matching source exactly. The grey look comes for free from
+//          chStateColorCss already resolving to var(--state-unavailable-color)
+//          for the unavailable state - no separate dimming needed. Also added
+//          .disabled=${state==='unavailable'} to the Mode/Preset/Fan/Swing
+//          ha-control-select-menu rows, matching
+//          hui-mode-select-card-feature-base.ts's own .disabled binding, which
+//          we had never ported.
 // v1.1.20: chStateActive() rewritten as a verified port of state_active.ts,
 //          scoped to the climate domain specifically (this card never handles
 //          any other domain, so the timestamp-domain and per-domain-switch
@@ -943,7 +955,7 @@ class ChronoHvacCard extends LitElement {
     return undefined;
   }
 
-  _renderModeRow(hvacModes, currentMode) {
+  _renderModeRow(hvacModes, currentMode, disabled) {
     const opts = [...hvacModes].sort(chCompareHvacModes).map((m) => ({
       value: m,
       label: CH_HVAC_MODE_LABELS[m] || chCapitalize(m),
@@ -954,6 +966,7 @@ class ChronoHvacCard extends LitElement {
         .label=${'Mode'}
         .value=${currentMode}
         .options=${opts}
+        .disabled=${disabled}
         @wa-select=${(ev) => {
           const value = ev.detail?.item?.value;
           if (value !== undefined && value !== currentMode) this._setHvacMode(value);
@@ -964,7 +977,7 @@ class ChronoHvacCard extends LitElement {
     `;
   }
 
-  _renderAttributeRow(label, attribute, options, currentValue, onChange) {
+  _renderAttributeRow(label, attribute, options, currentValue, onChange, disabled) {
     const opts = options.map((v) => ({ value: v, label: CH_HVAC_MODE_LABELS[v] || chCapitalize(v) }));
     const renderIcon = (value) => {
       const icon = this._getAttributeIcon(attribute, value);
@@ -976,6 +989,7 @@ class ChronoHvacCard extends LitElement {
         .value=${currentValue}
         .options=${opts}
         .renderIcon=${renderIcon}
+        .disabled=${disabled}
         @wa-select=${(ev) => {
           const value = ev.detail?.item?.value;
           if (value !== undefined && value !== currentValue) onChange(value);
@@ -1038,7 +1052,13 @@ class ChronoHvacCard extends LitElement {
     const currentMarker = showCurrentMarker ? chStrokeCircleDashArc(current, min, max) : null;
 
     let arcs;
-    if (isRange) {
+    if (mode === 'unavailable') {
+      // Ported from HA source (render(), final fallback branch): unavailable
+      // entities always fall to the plain readonly 'full' ring regardless of
+      // whether the entity is normally single/range - no target dot, no
+      // low/high split, matching native exactly.
+      arcs = this._renderArcGroup(null, 'full', min, max, current, 'var(--ch-state-color)');
+    } else if (isRange) {
       const low = this._effectiveLow(attrs);
       const high = this._effectiveHigh(attrs);
       arcs = svg`
@@ -1177,18 +1197,19 @@ class ChronoHvacCard extends LitElement {
     const friendlyName = this.hass.states[this._config.entity]?.attributes?.friendly_name || '';
     const name = this._config.name || (this._config.show_entity_name_fallback ? friendlyName : '');
 
+    const featureRowsDisabled = mode === 'unavailable';
     const featureRows = [];
     if (this._config.show_mode_button && hvacModes.length > 1) {
-      featureRows.push(this._renderModeRow(hvacModes, mode));
+      featureRows.push(this._renderModeRow(hvacModes, mode, featureRowsDisabled));
     }
     if (this._config.show_preset_button && presetModes.length) {
-      featureRows.push(this._renderAttributeRow('Preset', 'preset_mode', presetModes, attrs.preset_mode, (v) => this._setPresetMode(v)));
+      featureRows.push(this._renderAttributeRow('Preset', 'preset_mode', presetModes, attrs.preset_mode, (v) => this._setPresetMode(v), featureRowsDisabled));
     }
     if (this._config.show_fan_button && fanModes.length) {
-      featureRows.push(this._renderAttributeRow('Fan mode', 'fan_mode', fanModes, attrs.fan_mode, (v) => this._setFanMode(v)));
+      featureRows.push(this._renderAttributeRow('Fan mode', 'fan_mode', fanModes, attrs.fan_mode, (v) => this._setFanMode(v), featureRowsDisabled));
     }
     if (this._config.show_swing_button && swingModes.length) {
-      featureRows.push(this._renderAttributeRow('Swing mode', 'swing_mode', swingModes, attrs.swing_mode, (v) => this._setSwingMode(v)));
+      featureRows.push(this._renderAttributeRow('Swing mode', 'swing_mode', swingModes, attrs.swing_mode, (v) => this._setSwingMode(v), featureRowsDisabled));
     }
     const scrollClass = `ch-controls-scroll items-${featureRows.length}${featureRows.length >= 4 ? ' multiline' : ''}`;
 
