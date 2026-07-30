@@ -2,9 +2,31 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.2.25';
+const CARD_VERSION = '1.2.26';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.2.26: Fix v1.2.25's collapse - re-fetched hui-thermostat-card.ts (this time
+//          the actual file, uploaded directly, not a possibly-corrupted page
+//          render) and found the real structure: native uses TWO separate
+//          nested elements, not one. .container (outer: flex, align/justify
+//          center, the ::before padding-top:100% trick, flex:1) is one thing.
+//          <ha-state-control-climate-temperature> - a SEPARATE element placed
+//          inside it, with its own :host{width:320px} default (verified from
+//          state-control-circular-slider-style.ts, already on disk) - is a
+//          second thing. Split accordingly: .container now matches source
+//          byte-for-byte; .dial-wrapper (containing our svg/center-info/step-
+//          buttons) is now the inner element with the real component's own
+//          320px default width + aspect-ratio:1 + max-width:100%, and is
+//          .container's single real child, so ".container > .dial-wrapper"
+//          padding:8px now matches source's ".container > *" exactly (no
+//          longer a 3-vs-1-child mismatch like the previous attempt).
+//          [Disclosed, still not ported] native additionally uses a JS
+//          ResizeController measuring .container's own rendered height to cap
+//          the control's max-width further, for wide-but-short cards. Without
+//          it, an unusually short-but-wide card could let the dial grow up to
+//          320px and get clipped by .container's overflow:hidden rather than
+//          shrinking gracefully - a real, narrower edge case than what broke
+//          in v1.2.24/25, not the core sizing bug.
 // v1.2.25: Fix regression from v1.2.24 - .dial-wrapper's sizing was NOT actually
 //          the same technique as source despite claiming so. v1.2.24 used
 //          aspect-ratio:1 + flex:1, which requires height:100% to resolve up the
@@ -1460,10 +1482,12 @@ class ChronoHvacCard extends LitElement {
           </div>
         ` : ''}
 
-        <div class="dial-wrapper">
-          ${this._renderDial(stateObj)}
-          ${this._renderCenter(stateObj)}
-          ${this._renderStepButtons(stateObj)}
+        <div class="container">
+          <div class="dial-wrapper">
+            ${this._renderDial(stateObj)}
+            ${this._renderCenter(stateObj)}
+            ${this._renderStepButtons(stateObj)}
+          </div>
         </div>
 
         ${featureRows.length ? html`
@@ -1553,7 +1577,7 @@ class ChronoHvacCard extends LitElement {
       line-height: var(--ha-line-height-condensed);
       margin-top: 2px;
     }
-    .dial-wrapper {
+    .container {
       display: flex;
       align-items: center;
       justify-content: center;
@@ -1562,17 +1586,23 @@ class ChronoHvacCard extends LitElement {
       max-width: 100%;
       box-sizing: border-box;
       flex: 1;
-      container-type: inline-size;
-      container-name: chdial;
     }
-    .dial-wrapper::before {
+    .container::before {
       content: "";
       display: block;
       padding-top: 100%;
     }
-    .dial-wrapper > .dial-svg {
+    .container > .dial-wrapper {
       padding: 8px;
       box-sizing: border-box;
+    }
+    .dial-wrapper {
+      position: relative;
+      width: 320px;
+      max-width: 100%;
+      aspect-ratio: 1;
+      container-type: inline-size;
+      container-name: chdial;
     }
     .dial-wrapper::after {
       display: block;
