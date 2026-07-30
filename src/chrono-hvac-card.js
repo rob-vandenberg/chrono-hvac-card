@@ -2,9 +2,24 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.2.43';
+const CARD_VERSION = '1.2.44';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.2.44: [Rule: zero negative margins, forbidden going forward] Removed
+//          .card-content's margin-top:-12px (added v1.2.37 as a workaround
+//          for ha-card's unreachable internal header padding). Compensated
+//          by reducing .current's own padding-top 20px->8px, keeping the
+//          same net 24px gap when a header exists (16px header padding + 8px
+//          = 24px, same as before: 16 + (-12) + 20 = 24), built entirely
+//          from positive spacing. Root cause of the no-name/no-header
+//          collapse bug: the flat -12px was applied unconditionally, but
+//          ha-card.ts's own CSS treats header-present vs header-absent
+//          .card-content differently (confirmed from source) - so the same
+//          -12px landed on two different baselines and only produced a
+//          correct result in the header-present case. .current's padding-top
+//          doesn't depend on that conditional, so both cases should now be
+//          consistent. [Not yet re-measured on the no-header entity -
+//          reasoning-based, pending verification.]
 // v1.2.43: Added show_border config option (default true) with editor toggle.
 //          ha-card's border comes from ha-card.ts's own default CSS
 //          (border-width: var(--ha-card-border-width, 1px), confirmed from
@@ -1140,7 +1155,6 @@ class ChronoHvacCard extends LitElement {
     .card-content {
       position: relative;
       width: 100%;
-      margin-top: -12px;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -1171,7 +1185,7 @@ class ChronoHvacCard extends LitElement {
       text-align: center;
       width: 100%;
       box-sizing: border-box;
-      padding: 20px 16px 0 16px;
+      padding: 8px 16px 0 16px;
       margin-bottom: 18px;
       flex: none;
     }

@@ -3,16 +3,16 @@
 
   [![](https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge)](https://github.com/hacs/integration)
   [![](https://img.shields.io/badge/License-AGPL_3.0-blue.svg?style=for-the-badge)](https://www.gnu.org/licenses/agpl-3.0)
-  [![](https://img.shields.io/badge/Version-0.1.25-brightgreen.svg?style=for-the-badge)](#)
+  [![](https://img.shields.io/github/v/release/rob-vandenberg/chrono-hvac-card?style=for-the-badge&color=brightgreen&label=Version)](https://github.com/rob-vandenberg/chrono-hvac-card/releases)
 
-  <img src="art/header.svg" width="780" alt="Chrono Popup Banner">
+  <img src="art/header.svg" width="780" alt="Chrono HVAC Card Banner">
 
-  <img src="art/banner.png" width="800" alt="Chrono Popup in action">
+  <img src="art/banner.png" width="800" alt="Chrono HVAC Card in action">
 
   <p align="center">
-    <strong>Show any Home Assistant dashboard view as a popup.<br>
-            Design the popup visually in the normal dashboard editor -<br>
-            no layout-card, no grid-area YAML, no browser_mod dependency.</strong>
+    <strong>A thermostat card that looks and feels exactly like Home Assistant's own.<br>
+            Every button shown or hidden, your way.<br>
+            Set up entirely with a visual editor - no YAML needed.</strong>
   </p>
 
   <p align="center">
@@ -27,9 +27,7 @@
 
 ---
 
-**Chrono Popup** fills a gap browser_mod's popup feature doesn't cover: showing an entire dashboard **view** - built visually, with HA's own dashboard editor - inside a popup. Instead of hand-assembling `layout-card`, `conditional`, and `grid-area` YAML to fake a custom popup layout, you design a normal subview the way you'd design any other page, then point the popup at it.
-
-Chrono Popup is **not a card**. There's no `type: custom:chrono-popup` you place on a dashboard, no visual editor, and it won't appear in the "+ Add Card" picker. It's a resource: once loaded, any `tap_action` anywhere - a button, a tile, any card at all - can open the popup by firing a small event. Nothing to place, nothing to configure ahead of time; every popup is defined at the moment it's triggered.
+**Chrono HVAC Card** is a dashboard card for any `climate` entity. It looks like Home Assistant's built-in thermostat card, because it uses the same real dial component Home Assistant uses internally. On top of that, it adds mode, preset, fan, and swing buttons - and lets you show or hide any part of the card, right from the editor.
 
 ---
 
@@ -42,10 +40,8 @@ Chrono Popup is **not a card**. There's no `type: custom:chrono-popup` you place
   - [Manual Installation](#manual-installation)
 - [Uninstallation](#uninstallation)
 - [Usage](#usage)
-  - [Trigger Syntax](#trigger-syntax)
-  - [Recognized Keys](#recognized-keys)
-  - [The `view` Path](#the-view-path)
-  - [Styling](#styling)
+  - [Adding the Card](#adding-the-card)
+  - [Options](#options)
 - [Limitations](#limitations)
 - [License](#license)
 - [Support](#support)
@@ -54,26 +50,23 @@ Chrono Popup is **not a card**. There's no `type: custom:chrono-popup` you place
 
 ## 🚀 Key Features
 
-### 🖼️ Design Popups Visually
-The popup's content is a real dashboard view, built in HA's own visual editor - not hand-written YAML fighting `layout-card` and `grid-template-areas` to fake a layout. If you can build it as a view, you can show it as a popup.
+### 🎯 Looks and Feels Native
+The dial is Home Assistant's own dial component, not a copy. Dragging, stepping, colors, and dual heat/cool ranges all work exactly like the built-in thermostat card.
 
-### 🧩 Any View Type
-Panel, masonry, sections, sidebar - all rendered through Home Assistant's own view layout element, not reimplemented from scratch. Whatever layout the view uses on a normal dashboard is exactly what renders inside the popup.
+### 🧩 Capability-Aware Buttons
+Mode, preset, fan, and swing buttons only show up if your entity actually supports them. Nothing empty, nothing broken.
 
-### 🔄 Genuinely Live
-Conditional cards, template sensors, anything that depends on live state - all update in real time while the popup is open, the same as they would on a normal dashboard page.
+### 🎛️ Full Visual Editor
+Every setting - the entity, the name, and what's shown or hidden - can be changed from the card editor. No YAML required.
 
-### 📐 Auto-Sizing by Default
-The popup sizes itself to fit its content automatically, with sensible min/max caps so it never overflows the screen. No need to calculate pixel dimensions up front.
+### 👁️ Show or Hide Anything
+Turn off the border, the name, the more-info button, the humidity readout, or any of the four mode buttons. Build the exact card you want.
 
-### 🎨 One Escape Hatch for All Styling
-Every visual property - size, background, border, radius, anything - is set through a single `styles:` block using real CSS property names, including CSS custom properties. No separate named fields to remember, no guessing which property lives where.
+### 📐 Fits Any Dashboard
+The card sizes itself to its own content. It works the same in masonry, sections, and panel views, with no layout code needed.
 
-### 🚫 Zero Dependencies
-No browser_mod required. Chrono Popup handles its own trigger mechanism, its own popup chrome, and its own view resolution independently.
-
-### 🔒 Respects View Visibility
-If a view is restricted to specific users in the dashboard editor, that restriction is respected here too - a view hidden from a user stays hidden inside the popup.
+### 🎨 Matches Your Theme
+Colors come from your Home Assistant theme automatically, the same way the native card does.
 
 ---
 
@@ -84,20 +77,18 @@ If a view is restricted to specific users in the dashboard editor, that restrict
 1. Open **HACS** in your Home Assistant instance.
 2. Navigate to **Frontend** and click the three-dot menu in the top right corner.
 3. Select **Custom repositories**.
-4. Enter `https://github.com/rob-vandenberg/chrono-popup` and select **Lovelace** as the category.
+4. Enter `https://github.com/rob-vandenberg/chrono-hvac-card` and select **Lovelace** as the category.
 5. Click **Add**. The repository will appear in the list.
-6. Search for `Chrono Popup` and click **Download**.
+6. Search for `Chrono HVAC Card` and click **Download**.
 7. Reload your browser.
-
-Chrono Popup is a resource, not a card - there's no card to add to a dashboard afterward. Once the resource is loaded, it's ready to be triggered from any `tap_action`.
 
 ### Manual Installation
 
-1. Download `chrono-popup.js` from the [latest release](https://github.com/rob-vandenberg/chrono-popup/releases/latest).
+1. Download `chrono-hvac-card.js` from the [latest release](https://github.com/rob-vandenberg/chrono-hvac-card/releases/latest).
 2. Copy it to your Home Assistant `config/www/` folder.
 3. In Home Assistant, go to **Settings → Dashboards → Resources**.
 4. Click **Add Resource**.
-5. Enter `/local/chrono-popup.js` as the URL and select **JavaScript Module**.
+5. Enter `/local/chrono-hvac-card.js` as the URL and select **JavaScript Module**.
 6. Click **Create** and reload your browser.
 
 ---
@@ -106,109 +97,78 @@ Chrono Popup is a resource, not a card - there's no card to add to a dashboard a
 
 ### Via HACS
 1. Open **HACS → Frontend**.
-2. Find **Chrono Popup** and click the three-dot menu.
+2. Find **Chrono HVAC Card** and click the three-dot menu.
 3. Select **Remove**.
 4. Reload your browser.
 
 ### Manual
-1. Delete `chrono-popup.js` from `config/www/`.
+1. Delete `chrono-hvac-card.js` from `config/www/`.
 2. Remove the resource entry from **Settings → Dashboards → Resources**.
+3. Remove any cards using `chrono-hvac-card` from your dashboards.
 
 ---
 
-<img src="art/popup-example.png" width="800" alt="Chrono Popup showing a subview">
+<img src="art/hvac-card.png" alt="Chrono HVAC Card showing a climate entity">
 
 ---
 
 ## ⚙️ Usage
 
-### Trigger Syntax
+### Adding the Card
 
-Any card's `tap_action` can open a popup via `fire-dom-event`:
+1. Open a dashboard and click **Edit Dashboard**.
+2. Click **Add Card**.
+3. Search for **Chrono HVAC Card**.
+4. Pick a `climate` entity from the dropdown.
+5. Use the editor to show or hide whatever you want.
+
+<img src="art/hvac-editor.png" alt="Chrono HVAC Card visual editor">
+
+The editor only shows toggles that apply to your entity. For example, the Fan mode toggle only appears if your entity has fan modes.
+
+If you'd rather write YAML directly, here's a full example:
 
 ```yaml
-tap_action:
-  action: fire-dom-event
-  chrono-popup:
-    data:
-      title: "Hello, world!"
-      view: "/dashboard-test/uren-panel"
-      dismissable: true
-      styles:
-        frame:
-          width: 640px
-          height: 580px
-          background: "#000000"
-          border-radius: 50px
-        header:
-          padding: 8px 8px 0 8px
+type: custom:chrono-hvac-card
+entity: climate.living_room
+name: Living Room
+show_entity_name_fallback: true
+show_current_temperature: true
+show_current_humidity: true
+show_more_info_button: false
+show_mode_button: true
+show_preset_button: true
+show_fan_button: true
+show_swing_button: true
+show_border: true
 ```
 
-### Recognized Keys
+### Options
 
-| Key | Type | Default | Description |
+| Key | Type | Default | What it does |
 | :--- | :--- | :--- | :--- |
-| `title` | string | `''` | Text shown in the popup's header bar |
-| `view` | string | *required* | The view to display - see [The `view` Path](#the-view-path) below |
-| `styles` | object | `{}` | Per-element CSS, nested by target - see [Styling](#styling) below |
-| `dismissable` | boolean | `true` | Whether clicking outside the popup closes it. When `false`, only the close button works. |
+| `entity` | text | required | The `climate` entity to control. |
+| `name` | text | (none) | A custom name to show in the header. Leave it out to use the entity's own name. |
+| `show_entity_name_fallback` | `true`/`false` | `true` | If `true` and `name` is empty, shows the entity's friendly name instead. Set to `false` to hide the header entirely when no custom name is set. |
+| `show_current_temperature` | `true`/`false` | `true` | Shows the current temperature reading, if the entity reports one. |
+| `show_current_humidity` | `true`/`false` | `true` | Shows the current humidity reading, if the entity reports one. |
+| `show_more_info_button` | `true`/`false` | `false` | Shows a button in the top-right corner that opens the entity's more-info dialog. |
+| `show_mode_button` | `true`/`false` | `true` | Shows the HVAC mode button (heat, cool, auto, off, and so on). |
+| `show_preset_button` | `true`/`false` | `true` | Shows the preset mode button, if the entity has presets. |
+| `show_fan_button` | `true`/`false` | `true` | Shows the fan mode button, if the entity has fan modes. |
+| `show_swing_button` | `true`/`false` | `true` | Shows the swing mode button, if the entity has swing modes. |
+| `show_border` | `true`/`false` | `true` | Shows the card's outer border. Set to `false` for a borderless look. |
 
-Any other key is not recognized and will not be applied. A `console.warn()` is logged naming the unrecognized key rather than failing silently.
-
-### The `view` Path
-
-`view` is `"/<dashboard url_path>/<view path>"` - both segments are required.
-
-```yaml
-view: "/dashboard-subviews/oprit-announcements"
-```
-
-- `dashboard-subviews` is the dashboard's `url_path` - the segment in the browser's address bar, not its display title.
-- `oprit-announcements` is the view's `path`, set in the view's own settings in the dashboard editor.
-
-The default (unnamed) dashboard is not currently supported - only dashboards with an explicit `url_path`.
-
-### Styling
-
-`styles:` is nested by target - one optional sub-key per distinct element in the popup, each accepting any real CSS property name:
-
-| Target | Element |
-| :--- | :--- |
-| `overlay` | The full-screen backdrop behind the popup |
-| `frame` | The popup window itself (size, background, border-radius) |
-| `header` | The title bar |
-| `title` | The title text |
-| `close-button` | The close button |
-| `body` | The content area where the subview renders |
-| `status` | Loading/error text shown inside the body |
-
-```yaml
-styles:
-  frame:
-    width: auto
-    min-width: 580px
-    max-width: 90vw
-    height: auto
-    min-height: 533px
-    max-height: 90vh
-    background: var(--card-background-color, #1c1c1c)
-    border-radius: var(--ha-dialog-border-radius, 28px)
-  header:
-    padding: 8px 8px 0 8px
-```
-
-Every target has its own built-in defaults, applied automatically when omitted. Any property set under a target overrides the matching default. Two things can't be reached this way: the close button's hover effect (a `:hover` state, not expressible as a static override) and the error-message text color (kept separate so it doesn't get permanently overridden by a general status color).
-
-CSS custom properties (`--variable-name`) are supported on any target, and are the one styling mechanism that can reach into the view's own cards, since custom properties inherit through the shadow DOM boundaries that ordinary selectors cannot cross. For styling individual cards inside the view directly, use [card-mod](https://github.com/thomasloven/lovelace-card-mod) on those cards in the subview itself - `styles:` here only ever reaches the seven targets above, never into the rendered subview's own content.
+Using a key that isn't in this list, or a value that isn't valid, won't break the card - it's just ignored.
 
 ---
 
 ## ⚠️ Limitations
 
-- The default (unnamed) dashboard is not supported - only dashboards with an explicit `url_path`.
-- Only real Lovelace dashboards and views can be shown - generated panels (e.g. Music Assistant, the auto-generated Areas dashboard) and non-Lovelace integration panels are not supported.
-- Only one popup is shown at a time - triggering a new one while another is open replaces it.
-- Automations and scripts cannot trigger a popup directly - `fire-dom-event` requires a browser-side `tap_action`.
+- Only entities from the `climate` domain are supported.
+- One entity per card. Add another card for another entity.
+- The dial's exact look follows your installed Home Assistant version, since it uses Home Assistant's own dial component directly. A very old Home Assistant version may not have that component available.
+- Mode, preset, fan, and swing buttons are only shown if the entity itself reports supporting them. The card can't add capabilities an entity doesn't have.
 
 ---
 
@@ -228,4 +188,4 @@ Copyright © 2026 Rob Vandenberg. All rights reserved.
 
 If you find this project useful and wish to support its continued development, please consider a contribution.
 
-[![](https://img.shields.io/badge/Buy_Me_A_Coffee-Support-yellow.svg?style=for-the-badge)](https://www.buymeacoffee.com/)
+[![](https://img.shields.io/badge/Buy_Me_A_Coffee-Support-yellow.svg?style=for-the-badge)](https://www.buymeacoffee.com/robvandenberg)
