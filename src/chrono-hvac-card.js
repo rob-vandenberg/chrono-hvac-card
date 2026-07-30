@@ -1,11 +1,23 @@
 import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js?module';
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
-import { ResizeController } from 'https://unpkg.com/@lit-labs/observers@1/resize-controller.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.2.28';
+const CARD_VERSION = '1.2.29';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.2.29: Fix v1.2.27/28's fatal load failure - confirmed via console output
+//          that unpkg.com does not serve @lit-labs/observers with the CORS
+//          headers browsers require, so the import threw and the whole card
+//          module failed to register (showing as HA's generic "Configuration
+//          error"). Removed the import, the _resizeController setup, and the
+//          now-unused max-width style binding on
+//          <ha-state-control-climate-temperature>. .container's CSS is
+//          unchanged and remains fully correct on its own (confirmed working
+//          since v1.2.26). [Disclosed, accepted] without this refinement, an
+//          unusually short-but-wide card could let the dial slightly overflow
+//          .container's overflow:hidden - user-confirmed native has this exact
+//          same behavior in that scenario, so this is not a new gap versus
+//          native, just an un-fixed one native doesn't fully solve either.
 // v1.2.28: FUNDAMENTAL ARCHITECTURE CHANGE for block 3 (the arc, +/- buttons,
 //          and center temperature). Every previous version of this block was a
 //          from-scratch reimplementation of native's geometry, color, drag,
@@ -740,15 +752,6 @@ class ChronoHvacCard extends LitElement {
   constructor() {
     super();
     this._attrIconCache = {};
-    // Ported from HA source (hui-thermostat-card.ts): measures .container's own
-    // rendered height, applied as max-width on the dial so it never overflows
-    // .container's overflow:hidden on wide-but-short cards.
-    this._resizeController = new ResizeController(this, {
-      callback: (entries) => {
-        const container = entries[0]?.target.shadowRoot?.querySelector('.container');
-        return container?.clientHeight;
-      },
-    });
   }
 
   set hass(hass) {
@@ -960,7 +963,6 @@ class ChronoHvacCard extends LitElement {
 
         <div class="container">
           <ha-state-control-climate-temperature
-            style=${this._resizeController.value ? `max-width:${this._resizeController.value}px` : ''}
             prevent-interaction-on-scroll
             show-secondary
             .stateObj=${stateObj}
