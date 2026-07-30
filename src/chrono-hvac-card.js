@@ -2,9 +2,21 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.2.38';
+const CARD_VERSION = '1.2.39';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.2.39: Deleted getGridOptions() entirely. Per explicit project rule: the
+//          card must contain zero code that knows about or adapts to any
+//          specific container/layout system (sections, masonry, panel, etc).
+//          hui-thermostat-card.ts defines getGridOptions() because HA wrote
+//          it and made that choice for their own card; we are not doing the
+//          same. Card content (title/readouts/arc/buttons) now determines
+//          the card's natural height/width entirely on its own; per-instance
+//          resizing remains available to the user via the dashboard's own UI
+//          (e.g. sections view's Layout tab), same as any card without this
+//          method. This also resolves the edit-mode clipping bug from
+//          earlier (card rendering 622px inside a fixed 312px grid cell),
+//          since the card no longer requests a fixed row height at all.
 // v1.2.38: Four changes: 1) ha-card: added height:100%/width:100%, matching
 //          hui-thermostat-card.ts source - fixes edit-mode overflow bug
 //          (verified: ha-card was rendering 622px inside a 312px grid cell).
@@ -875,17 +887,6 @@ class ChronoHvacCard extends LitElement {
 
   getCardSize() {
     return 7;
-  }
-
-  // Ported from HA source (hui-thermostat-card.ts: getGridOptions) — dashboard-
-  // card infrastructure for HA's sections-type dashboards.
-  getGridOptions() {
-    return {
-      columns: 12,
-      rows: 5,
-      min_columns: 6,
-      min_rows: 2,
-    };
   }
 
   static getConfigElement() {
