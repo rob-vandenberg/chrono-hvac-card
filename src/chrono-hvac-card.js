@@ -2,9 +2,42 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.0.18';
+const CARD_VERSION = '1.1.19';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.1.19: Full source-comparison review and fix pass against
+//          ha-state-control-climate-temperature.ts (previously only its render
+//          output had been ported, not all of its interaction/logic branches):
+//          1) Dual-mode (heat_cool) low/high colors now active-aware — 'heat'/
+//             'cool' only when active, 'off'/'off' when inactive (was always
+//             heat/cool regardless of active state).
+//          2) Single-mode slider now replicates the heatCoolModes.length===1
+//             special case: if the entity supports exactly one of heat/cool/
+//             heat_cool and current mode is off/auto, the slider still uses that
+//             one mode's style instead of falling back to 'full'.
+//          3) Step size now falls back to hass.config.unit_system.temperature
+//             ('°F' -> 1, else 0.5) instead of a hardcoded 0.5, matching source.
+//          4) Step-button service calls are now debounced 1000ms (matching
+//             source's _debouncedCallService), instead of firing immediately on
+//             every click. Drag-release calls remain immediate (matches source's
+//             _valueChanged vs _handleButton distinction).
+//          5) Dual-mode step buttons now get a colored outline
+//             (--md-sys-color-outline) matching the selected target's color when
+//             active, matching source's _renderTemperatureButtons(target, colored).
+//          6) Added UNAVAILABLE state handling: dedicated disabled label, dial
+//             non-interactive. [Disclosed] native's exact fallback markup for
+//             this branch wasn't in the retrieved source; this is a reasonable
+//             equivalent, not a verified pixel-identical port.
+//          7) Center label/number now gated on actual temperature-support
+//             presence instead of always attempting to render.
+//          8) Added tap-to-select on the low/high numbers in dual mode
+//             (previously only settable by dragging); _selectedRangeTarget moved
+//             into static properties so it's properly reactive.
+//          9) _step() per-side fallback now uses ?? min / ?? max per side,
+//             matching source's defaultValue behavior, instead of no fallback.
+//          Plus: console banner recolored to white/blue/white
+//          (background #101010, "HVAC" in #4676d3, rest white) per explicit
+//          instruction, replacing the earlier orange/dark scheme.
 // v1.0.18: Structural fix for the +/- buttons triggering a spurious arc drag
 //          (Rule 6 - fixed the cause, not the symptom). Verified from source
 //          (ha-control-circular-slider.ts): native attaches drag interaction ONLY
@@ -196,7 +229,6 @@ const CH_SLIDER_MODES = {
 
 const CH_DEFAULT_MIN_TEMP = 7;
 const CH_DEFAULT_MAX_TEMP = 35;
-const CH_DEFAULT_STEP = 0.5;
 
 const CH_HVAC_MODE_LABELS = {
   off:       'Off',
@@ -410,11 +442,37 @@ function chDomainColorProperties(domain, stateObj, state, active) {
   return props;
 }
 
+// Shared active/inactive heuristic, used consistently everywhere "active" matters
+// (color chain fallback tier, dual-mode low/high coloring, button tinting).
+// [Note] approximates the real stateActive() (source not verified this session);
+// treats off/unavailable/unknown as inactive, everything else as active.
+function chStateActive(state) {
+  return state !== 'off' && state !== 'unavailable' && state !== 'unknown';
+}
+
 function chStateColorCss(stateObj, overrideState) {
   const compareState = overrideState !== undefined ? overrideState : stateObj.state;
   if (compareState === 'unavailable') return 'var(--state-unavailable-color)';
-  const active = compareState !== 'off';
+  const active = chStateActive(compareState);
   return chComputeCssVariable(chDomainColorProperties('climate', stateObj, compareState, active));
+}
+
+// Ported from HA source (ha-state-control-climate-temperature.ts: this._step getter)
+function chGetStep(hass, stateObj) {
+  if (stateObj.attributes.target_temp_step) return stateObj.attributes.target_temp_step;
+  return hass?.config?.unit_system?.temperature === '°F' ? 1 : 0.5;
+}
+
+// Simple debounce, matching source's use of common/util/debounce for step-button
+// service calls (1000ms).
+function chDebounce(fn, wait) {
+  let timer;
+  const debounced = (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), wait);
+  };
+  debounced.cancel = () => clearTimeout(timer);
+  return debounced;
 }
 
 // ─── Editor Field Helpers ──────────────────────────────────────────────────────
@@ -622,8 +680,10 @@ customElements.define('chrono-hvac-card-editor', ChronoHvacCardEditor);
 // ─── Card ─────────────────────────────────────────────────────────────────────
 class ChronoHvacCard extends LitElement {
   static properties = {
-    _dragTarget: { type: String },   // null | 'single' | 'low' | 'high'
-    _dragTemp:   { type: Object },   // { single } or { low, high } while dragging
+    _dragTarget:        { type: String },   // null | 'single' | 'low' | 'high'
+    _dragTemp:          { type: Object },   // { single } or { low, high } while dragging
+    _stepOverride:       { type: Object },  // { value?, low?, high? } while a debounced button-step is pending
+    _selectedRangeTarget: { type: String }, // 'low' | 'high' - which side the step buttons act on in dual mode
   };
 
   constructor() {
@@ -634,6 +694,8 @@ class ChronoHvacCard extends LitElement {
     this._boundPointerUp = this._onPointerUp.bind(this);
     this._attrIconCache = {};
     this._selectedRangeTarget = 'low';
+    this._stepOverride = {};
+    this._debouncedStepCommit = chDebounce(() => this._commitStepOverride(), 1000);
   }
 
   set hass(hass) {
@@ -699,30 +761,69 @@ class ChronoHvacCard extends LitElement {
     this._callService('set_swing_mode', { swing_mode: mode });
   }
 
+  // Effective values: drag override > pending step override > live entity state.
+  // Mirrors native's _targetTemperature local-state pattern.
+  _effectiveSingle(attrs) {
+    if (this._dragTarget === 'single') return this._dragTemp.single;
+    if (this._stepOverride.value !== undefined) return this._stepOverride.value;
+    return attrs.temperature;
+  }
+
+  _effectiveLow(attrs) {
+    if (this._dragTarget) return this._dragTemp.low;
+    if (this._stepOverride.low !== undefined) return this._stepOverride.low;
+    return attrs.target_temp_low;
+  }
+
+  _effectiveHigh(attrs) {
+    if (this._dragTarget) return this._dragTemp.high;
+    if (this._stepOverride.high !== undefined) return this._stepOverride.high;
+    return attrs.target_temp_high;
+  }
+
+  _commitStepOverride() {
+    const stateObj = this._stateObj;
+    if (!stateObj) { this._stepOverride = {}; return; }
+    const attrs = stateObj.attributes;
+    const isRange = attrs.target_temp_low !== undefined && attrs.target_temp_high !== undefined;
+    if (isRange) {
+      const low = this._stepOverride.low ?? attrs.target_temp_low;
+      const high = this._stepOverride.high ?? attrs.target_temp_high;
+      this._callService('set_temperature', { target_temp_low: low, target_temp_high: high });
+    } else if (this._stepOverride.value !== undefined) {
+      this._callService('set_temperature', { temperature: this._stepOverride.value });
+    }
+    this._stepOverride = {};
+  }
+
+  // Ported from HA source (_handleButton): accumulates from the last locally-known
+  // value (not the stale server value) so rapid clicks add up correctly during the
+  // debounce window, matching source's this._targetTemperature[target] ?? default.
   _step(direction, which) {
     const stateObj = this._stateObj;
     if (!stateObj) return;
     const attrs = stateObj.attributes;
-    const step = attrs.target_temp_step || CH_DEFAULT_STEP;
+    const step = chGetStep(this.hass, stateObj);
     const min = attrs.min_temp ?? CH_DEFAULT_MIN_TEMP;
     const max = attrs.max_temp ?? CH_DEFAULT_MAX_TEMP;
     const isRange = attrs.target_temp_low !== undefined && attrs.target_temp_high !== undefined;
 
     if (isRange) {
-      const low = attrs.target_temp_low;
-      const high = attrs.target_temp_high;
+      const currentLow = this._effectiveLow(attrs) ?? min;
+      const currentHigh = this._effectiveHigh(attrs) ?? max;
       if (which === 'low') {
-        const next = Math.min(high, Math.max(min, low + direction * step));
-        this._callService('set_temperature', { target_temp_low: next, target_temp_high: high });
+        const next = chClamp(currentLow + direction * step, min, currentHigh);
+        this._stepOverride = { ...this._stepOverride, low: next };
       } else {
-        const next = Math.max(low, Math.min(max, high + direction * step));
-        this._callService('set_temperature', { target_temp_low: low, target_temp_high: next });
+        const next = chClamp(currentHigh + direction * step, currentLow, max);
+        this._stepOverride = { ...this._stepOverride, high: next };
       }
     } else {
-      const current = attrs.temperature ?? min;
-      const next = Math.min(max, Math.max(min, current + direction * step));
-      this._callService('set_temperature', { temperature: next });
+      const current = this._effectiveSingle(attrs) ?? min;
+      const next = chClamp(current + direction * step, min, max);
+      this._stepOverride = { ...this._stepOverride, value: next };
     }
+    this._debouncedStepCommit();
   }
 
   // ─── Drag interaction ─────────────────────────────────────────────────────
@@ -752,7 +853,7 @@ class ChronoHvacCard extends LitElement {
 
   _onPointerDown(ev) {
     const stateObj = this._stateObj;
-    if (!stateObj || stateObj.state === 'off') return;
+    if (!stateObj || stateObj.state === 'off' || stateObj.state === 'unavailable') return;
     const attrs = stateObj.attributes;
     const min = attrs.min_temp ?? CH_DEFAULT_MIN_TEMP;
     const max = attrs.max_temp ?? CH_DEFAULT_MAX_TEMP;
@@ -781,7 +882,7 @@ class ChronoHvacCard extends LitElement {
     const attrs = stateObj.attributes;
     const min = attrs.min_temp ?? CH_DEFAULT_MIN_TEMP;
     const max = attrs.max_temp ?? CH_DEFAULT_MAX_TEMP;
-    const step = attrs.target_temp_step || CH_DEFAULT_STEP;
+    const step = chGetStep(this.hass, stateObj);
     const percentage = this._percentageFromPointer(ev.clientX, ev.clientY, this._dialRect);
     const rawValue = min + percentage * (max - min);
     const stepped = chClamp(Math.round(rawValue / step) * step, min, max);
@@ -924,15 +1025,20 @@ class ChronoHvacCard extends LitElement {
 
     let arcs;
     if (isRange) {
-      const low = this._dragTarget ? this._dragTemp.low : attrs.target_temp_low;
-      const high = this._dragTarget ? this._dragTemp.high : attrs.target_temp_high;
+      const low = this._effectiveLow(attrs);
+      const high = this._effectiveHigh(attrs);
       arcs = svg`
         ${this._renderArcGroup(low, 'start', min, max, current, 'var(--ch-low-color)')}
         ${this._renderArcGroup(high, 'end', min, max, current, 'var(--ch-high-color)')}
       `;
     } else {
-      const target = this._dragTarget ? this._dragTemp.single : attrs.temperature;
-      const sliderMode = CH_SLIDER_MODES[mode] || 'full';
+      const target = this._effectiveSingle(attrs);
+      // Ported from HA source (render(), single-temperature branch): if the
+      // entity supports exactly one of heat/cool/heat_cool and the current mode
+      // is off/auto, the slider still uses that one mode's style instead of 'full'.
+      const heatCoolModes = (attrs.hvac_modes || []).filter((m) => ['heat', 'cool', 'heat_cool'].includes(m));
+      const effectiveMode = (heatCoolModes.length === 1 && ['off', 'auto'].includes(mode)) ? heatCoolModes[0] : mode;
+      const sliderMode = CH_SLIDER_MODES[effectiveMode] || 'full';
       arcs = this._renderArcGroup(target, sliderMode, min, max, current, 'var(--ch-state-color)');
     }
 
@@ -943,7 +1049,7 @@ class ChronoHvacCard extends LitElement {
           ${currentMarker ? svg`<path class="ch-current-marker" d=${trackPath} stroke-dasharray=${currentMarker[0]} stroke-dashoffset=${currentMarker[1]}></path>` : ''}
           ${arcs}
           <path
-            class="ch-interaction ${mode === 'off' ? 'disabled' : ''}"
+            class="ch-interaction ${(mode === 'off' || mode === 'unavailable') ? 'disabled' : ''}"
             d=${trackPath}
             @pointerdown=${this._onPointerDown}
           ></path>
@@ -957,7 +1063,16 @@ class ChronoHvacCard extends LitElement {
     const mode = stateObj.state;
     const action = attrs.hvac_action;
     const isRange = attrs.target_temp_low !== undefined && attrs.target_temp_high !== undefined;
-    const step = attrs.target_temp_step || CH_DEFAULT_STEP;
+
+    if (mode === 'unavailable') {
+      return html`
+        <div class="ch-info">
+          <p class="ch-label ch-label-disabled">Unavailable</p>
+        </div>
+      `;
+    }
+
+    const step = chGetStep(this.hass, stateObj);
 
     // Ported from HA source (ha-state-control-climate-temperature.ts: _renderTarget)
     const digits = String(step).split('.')?.[1]?.length ?? 0;
@@ -968,21 +1083,25 @@ class ChronoHvacCard extends LitElement {
       : (CH_HVAC_MODE_LABELS[mode] || chCapitalize(mode));
 
     if (isRange) {
-      const low = this._dragTarget ? this._dragTemp.low : attrs.target_temp_low;
-      const high = this._dragTarget ? this._dragTemp.high : attrs.target_temp_high;
+      const low = this._effectiveLow(attrs);
+      const high = this._effectiveHigh(attrs);
       return html`
         <div class="ch-info">
           <p class="ch-label">${label}</p>
           <div class="ch-dual">
-            <ha-big-number .value=${low} unit="°C" unit-position="top" .formatOptions=${formatOptions}></ha-big-number>
+            <button class="ch-target-select ${this._selectedRangeTarget === 'low' ? 'selected' : ''}" @click=${() => { this._selectedRangeTarget = 'low'; }}>
+              <ha-big-number .value=${low} unit="°C" unit-position="top" .formatOptions=${formatOptions}></ha-big-number>
+            </button>
             <span>–</span>
-            <ha-big-number .value=${high} unit="°C" unit-position="top" .formatOptions=${formatOptions}></ha-big-number>
+            <button class="ch-target-select ${this._selectedRangeTarget === 'high' ? 'selected' : ''}" @click=${() => { this._selectedRangeTarget = 'high'; }}>
+              <ha-big-number .value=${high} unit="°C" unit-position="top" .formatOptions=${formatOptions}></ha-big-number>
+            </button>
           </div>
         </div>
       `;
     }
 
-    const target = this._dragTarget ? this._dragTemp.single : attrs.temperature;
+    const target = this._effectiveSingle(attrs);
     return html`
       <div class="ch-info">
         <p class="ch-label">${label}</p>
@@ -994,16 +1113,24 @@ class ChronoHvacCard extends LitElement {
   _renderStepButtons(stateObj) {
     const attrs = stateObj.attributes;
     const mode = stateObj.state;
-    if (mode === 'off') return html``;
+    if (mode === 'off' || mode === 'unavailable') return html``;
     const isRange = attrs.target_temp_low !== undefined && attrs.target_temp_high !== undefined;
     const target = isRange ? (this._selectedRangeTarget || 'low') : 'single';
 
+    // Ported from HA source (_renderTemperatureButtons): dual-mode buttons only
+    // get a colored outline (heat for low, cool for high) while active.
+    let buttonColor;
+    if (isRange && chStateActive(mode)) {
+      buttonColor = target === 'high' ? chStateColorCss(stateObj, 'cool') : chStateColorCss(stateObj, 'heat');
+    }
+    const buttonStyle = buttonColor ? `--md-sys-color-outline:${buttonColor}` : '';
+
     return html`
       <div class="step-buttons">
-        <ha-outlined-icon-button @click=${() => this._step(-1, target)}>
+        <ha-outlined-icon-button style=${buttonStyle} @click=${() => this._step(-1, target)}>
           <ha-icon icon="mdi:minus"></ha-icon>
         </ha-outlined-icon-button>
-        <ha-outlined-icon-button @click=${() => this._step(1, target)}>
+        <ha-outlined-icon-button style=${buttonStyle} @click=${() => this._step(1, target)}>
           <ha-icon icon="mdi:plus"></ha-icon>
         </ha-outlined-icon-button>
       </div>
@@ -1023,9 +1150,10 @@ class ChronoHvacCard extends LitElement {
 
     const attrs = stateObj.attributes;
     const mode = stateObj.state;
+    const active = chStateActive(mode);
     const stateColor = chStateColorCss(stateObj);
-    const lowColor = chStateColorCss(stateObj, 'heat');
-    const highColor = chStateColorCss(stateObj, 'cool');
+    const lowColor = chStateColorCss(stateObj, active ? 'heat' : 'off');
+    const highColor = chStateColorCss(stateObj, active ? 'cool' : 'off');
 
     const hvacModes = attrs.hvac_modes || [];
     const presetModes = attrs.preset_modes || [];
@@ -1240,6 +1368,9 @@ class ChronoHvacCard extends LitElement {
       text-align: center;
       color: inherit;
     }
+    .ch-label-disabled {
+      color: var(--secondary-text-color);
+    }
     ha-big-number {
       color: var(--primary-text-color);
     }
@@ -1250,6 +1381,19 @@ class ChronoHvacCard extends LitElement {
       gap: var(--ha-space-4, 12px);
       font-size: 24px;
       color: var(--secondary-text-color);
+    }
+    .ch-target-select {
+      background: none;
+      border: none;
+      padding: 2px 4px;
+      border-radius: 8px;
+      cursor: pointer;
+      pointer-events: auto;
+      font: inherit;
+      color: inherit;
+    }
+    .ch-target-select.selected {
+      outline: 1px solid var(--secondary-text-color);
     }
     .step-buttons {
       position: absolute;
@@ -1309,9 +1453,11 @@ customElements.define('chrono-hvac-card', ChronoHvacCard);
 
 // Log version info
 console.info(
-  `%c CHRONO-HVAC-CARD %c v${CARD_VERSION} `,
-  'background-color: #ff8100; color: #fff; font-weight: bold; padding: 2px 4px; border-radius: 3px 0 0 3px;',
-  'background-color: #1e1e1e; color: #fff; font-weight: bold; padding: 2px 4px; border-radius: 0 3px 3px 0;'
+  `%c CHRONO-%cHVAC%c-CARD %c v${CARD_VERSION} `,
+  'background-color: #101010; color: #FFFFFF; font-weight: bold; padding: 2px 0 2px 4px; border-radius: 3px 0 0 3px;',
+  'background-color: #101010; color: #4676d3; font-weight: bold; padding: 2px 0;',
+  'background-color: #101010; color: #FFFFFF; font-weight: bold; padding: 2px 4px 2px 0;',
+  'background-color: #1E1E1E; color: #FFFFFF; font-weight: bold; padding: 2px 4px; border-radius: 0 3px 3px 0;'
 );
 
 window.customCards = window.customCards || [];
