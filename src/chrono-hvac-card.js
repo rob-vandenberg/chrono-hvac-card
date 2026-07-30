@@ -2,9 +2,16 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.1.19';
+const CARD_VERSION = '1.1.20';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.1.20: chStateActive() rewritten as a verified port of state_active.ts,
+//          scoped to the climate domain specifically (this card never handles
+//          any other domain, so the timestamp-domain and per-domain-switch
+//          branches that only apply elsewhere are omitted). For climate, the
+//          real logic reduces to exactly: active = state is not off/unavailable/
+//          unknown - confirming the previous heuristic was already correct, now
+//          traceable to real source instead of an assumption.
 // v1.1.19: Full source-comparison review and fix pass against
 //          ha-state-control-climate-temperature.ts (previously only its render
 //          output had been ported, not all of its interaction/logic branches):
@@ -446,8 +453,15 @@ function chDomainColorProperties(domain, stateObj, state, active) {
 // (color chain fallback tier, dual-mode low/high coloring, button tinting).
 // [Note] approximates the real stateActive() (source not verified this session);
 // treats off/unavailable/unknown as inactive, everything else as active.
+// Ported from HA source (src/common/entity/state_active.ts: stateActive), scoped
+// to the climate domain only (this card never handles any other domain). For
+// climate: not in TIMESTAMP_STATE_DOMAINS, not the "alert" exception, and not
+// one of the custom-cased domains (alarm_control_panel/cover/lock/etc) - so the
+// real logic reduces to exactly this.
 function chStateActive(state) {
-  return state !== 'off' && state !== 'unavailable' && state !== 'unknown';
+  if (state === 'unavailable' || state === 'unknown') return false;
+  if (state === 'off') return false;
+  return true;
 }
 
 function chStateColorCss(stateObj, overrideState) {
