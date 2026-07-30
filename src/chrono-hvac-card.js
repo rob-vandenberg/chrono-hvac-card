@@ -2,9 +2,13 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.2.32';
+const CARD_VERSION = '1.2.33';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.2.33: Fix title alignment: ha-card is plain block again (matching v1.1.23),
+//          flex/align-items:center layout moved to new .content wrapper div.
+//          ha-card.header's internal h1 was being centered/shrunk by
+//          align-items:center previously on ha-card itself.
 // v1.2.32: Restored title to ha-card's own built-in .header property, matching
 //          v1.1.23 (the last version confirmed correct) and verified against
 //          real ha-card.ts source: ha-card renders <h1 class="card-header">
@@ -996,6 +1000,7 @@ class ChronoHvacCard extends LitElement {
 
     return html`
       <ha-card .header=${name}>
+        <div class="content">
         ${showMoreInfo ? html`
           <ha-icon-button class="more-info" label="Show more info" @click=${this._handleMoreInfo} tabindex="0">
             <ha-icon icon="mdi:dots-vertical"></ha-icon>
@@ -1035,6 +1040,7 @@ class ChronoHvacCard extends LitElement {
             </div>
           </div>
         ` : ''}
+        </div>
       </ha-card>
     `;
   }
@@ -1047,17 +1053,20 @@ class ChronoHvacCard extends LitElement {
       font-family: var(--ha-font-family-body, inherit);
     }
     ha-card {
+      padding: 0;
+      background: var(--card-background-color, #1a1a1a);
+      color: var(--primary-text-color, #fff);
+      border-radius: 12px;
+      box-sizing: border-box;
+    }
+    .content {
       position: relative;
       height: 100%;
       width: 100%;
-      padding: 0;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: space-between;
-      background: var(--card-background-color, #1a1a1a);
-      color: var(--primary-text-color, #fff);
-      border-radius: 12px;
       overflow: hidden;
       box-sizing: border-box;
     }
