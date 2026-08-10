@@ -2,9 +2,32 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.4.52';
+const CARD_VERSION = '1.4.53';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.4.53: [User-directed] Step 2 of styles: support - converted cosmetic/
+//          spacing/sizing literal values in static styles to
+//          var(--name, default), following chrono-slider-card's convention.
+//          Structural/functional properties (display, position, box-sizing,
+//          the dial-container::before aspect-ratio trick, scrollbar-hiding)
+//          intentionally left literal - not exposed as overridable, since
+//          doing so risks breaking layout mechanics. No prefixing on any
+//          variable name (explicit user decision - names stay simple,
+//          guessable, matching the class they belong to). One deliberate
+//          exception: ha-card's border-radius uses the real HA global token
+//          name var(--ha-card-border-radius, 12px) rather than a separate
+//          custom name, since <ha-card> is HA's real native component and
+//          already reads that exact variable internally (confirmed from
+//          ha-card.ts source) - this ties our default into HA's own live
+//          theming mechanism instead of a disconnected duplicate knob.
+//          New variables: --ha-card-border-radius, --warning-padding,
+//          --readouts-padding, --readouts-margin-bottom,
+//          --readout-label-opacity, --readout-label-letter-spacing,
+//          --readout-label-margin-bottom, --dial-container-margin-bottom,
+//          --dial-padding, --mode-buttons-max-width, --mode-button-min-width,
+//          --mode-button-max-width (the last two shared between the grid
+//          track's minmax() and the item's clamp(), deliberately, so they
+//          can't drift out of sync if only one is overridden).
 // v1.4.52: [User-directed] Step 1 of styles: support - DOM structure and
 //          classname pass only, no visual/behavioral change. Mirrors
 //          chrono-slider-card's shared+unique classname convention
@@ -1257,7 +1280,7 @@ class ChronoHvacCard extends LitElement {
       padding: 0;
       background: var(--card-background-color, #1a1a1a);
       color: var(--primary-text-color, #fff);
-      border-radius: 12px;
+      border-radius: var(--ha-card-border-radius, 12px);
       box-sizing: border-box;
     }
     ha-card.no-border {
@@ -1286,7 +1309,7 @@ class ChronoHvacCard extends LitElement {
     }
     .warning {
       color: var(--error-color, #db4437);
-      padding: 16px;
+      padding: var(--warning-padding, 16px);
     }
     .readouts {
       display: flex;
@@ -1296,8 +1319,8 @@ class ChronoHvacCard extends LitElement {
       text-align: center;
       width: 100%;
       box-sizing: border-box;
-      padding: 8px 16px 0 16px;
-      margin-bottom: 18px;
+      padding: var(--readouts-padding, 8px 16px 0 16px);
+      margin-bottom: var(--readouts-margin-bottom, 18px);
       flex: none;
     }
     .readout {
@@ -1315,11 +1338,11 @@ class ChronoHvacCard extends LitElement {
       color: var(--primary-text-color);
     }
     .readout-label {
-      opacity: 0.8;
+      opacity: var(--readout-label-opacity, 0.8);
       font-size: var(--ha-font-size-m);
       line-height: var(--ha-line-height-condensed);
-      letter-spacing: 0.4px;
-      margin-bottom: 2px;
+      letter-spacing: var(--readout-label-letter-spacing, 0.4px);
+      margin-bottom: var(--readout-label-margin-bottom, 2px);
     }
     .readout-value {
       font-size: var(--ha-font-size-xl);
@@ -1344,7 +1367,7 @@ class ChronoHvacCard extends LitElement {
       max-width: 100%;
       box-sizing: border-box;
       flex: 1;
-      margin-bottom: 16px;
+      margin-bottom: var(--dial-container-margin-bottom, 16px);
     }
     .dial-container::before {
       content: "";
@@ -1352,16 +1375,16 @@ class ChronoHvacCard extends LitElement {
       padding-top: 100%;
     }
     .dial-container > * {
-      padding: 8px;
+      padding: var(--dial-padding, 8px);
     }
     .mode-buttons {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(var(--mode-button-min-width, 112px), 1fr));
       justify-content: center;
       flex: none;
       gap: var(--ha-space-3, 12px);
       width: 100%;
-      max-width: 320px;
+      max-width: var(--mode-buttons-max-width, 320px);
       box-sizing: border-box;
       overflow: auto;
       -ms-overflow-style: none;
@@ -1369,7 +1392,7 @@ class ChronoHvacCard extends LitElement {
     }
     .mode-buttons::-webkit-scrollbar { display: none; }
     .mode-buttons > * {
-      width: clamp(112px, 100%, 140px);
+      width: clamp(var(--mode-button-min-width, 112px), 100%, var(--mode-button-max-width, 140px));
       justify-self: center;
     }
 
