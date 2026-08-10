@@ -2,9 +2,22 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.2.44';
+const CARD_VERSION = '1.3.45';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.3.45: Fixed mode/fan/swing buttons becoming unreachable on mobile.
+//          Root cause: .ch-controls-scroll (the button row) is a flex item
+//          of a row flex container (.ch-controls-container) and had no
+//          min-width override, so it kept the flexbox default min-width:auto
+//          and refused to shrink below its content's width - meaning its own
+//          overflow:auto never engaged and the excess was clipped by
+//          .card-content's overflow:hidden instead of being reachable.
+//          Fixed by adding min-width:0. Also removed the
+//          @media (hover:hover), (min-width:600px) and (min-height:501px)
+//          gate around the flex-wrap:wrap rules so wrapping applies
+//          universally instead of only on hover-capable/wide viewports -
+//          narrow touch devices now wrap the row instead of relying on
+//          horizontal scroll.
 // v1.2.44: [Rule: zero negative margins, forbidden going forward] Removed
 //          .card-content's margin-top:-12px (added v1.2.37 as a workaround
 //          for ha-card's unreachable internal header padding). Compensated
@@ -1254,12 +1267,16 @@ class ChronoHvacCard extends LitElement {
     .ch-controls-scroll {
       display: flex;
       flex-direction: row;
-      justify-content: flex-start;
+      justify-content: center;
+      flex-wrap: wrap;
       gap: var(--ha-space-3, 12px);
       margin: auto;
       overflow: auto;
       -ms-overflow-style: none;
       scrollbar-width: none;
+      min-width: 0;
+      width: 100%;
+      max-width: 450px;
     }
     .ch-controls-scroll::-webkit-scrollbar { display: none; }
     .ch-controls-scroll > * {
@@ -1267,17 +1284,9 @@ class ChronoHvacCard extends LitElement {
       max-width: 160px;
       flex: none;
     }
-    @media all and (hover: hover), all and (min-width: 600px) and (min-height: 501px) {
-      .ch-controls-scroll {
-        justify-content: center;
-        flex-wrap: wrap;
-        width: 100%;
-        max-width: 450px;
-      }
-      .ch-controls-scroll.items-4 { max-width: 300px; }
-      .ch-controls-scroll.items-3 > * { max-width: 140px; }
-      .ch-controls-scroll.multiline > * { width: 140px; }
-    }
+    .ch-controls-scroll.items-4 { max-width: 300px; }
+    .ch-controls-scroll.items-3 > * { max-width: 140px; }
+    .ch-controls-scroll.multiline > * { width: 140px; }
 
   `;
 }
