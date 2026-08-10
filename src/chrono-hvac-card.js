@@ -2,9 +2,22 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.3.50';
+const CARD_VERSION = '1.3.51';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.3.51: [User-directed, spec-verified] Fixed v1.3.50's justify-self:center
+//          making each button size to its own icon+label content instead of
+//          its track (measured: 82/87/106/120px, all below the 112px floor,
+//          all different per label length). Confirmed via CSS Working Group
+//          thread (fantasai/Palmgren): the fit-content(track-size) override
+//          triggered by non-stretch justify-self is explicitly conditioned
+//          on the item's width being 'auto'. Changed .mode-buttons > *'s
+//          width from auto (via unset width + min/max-width) to an explicit
+//          width: clamp(112px, 100%, 140px) - not 'auto', so the fit-content
+//          override doesn't apply; the 100% still ties it to the real,
+//          continuously-shrinking track width, floored/ceilinged by the
+//          clamp(), and justify-self:center can now center the resulting
+//          non-ambiguous box normally.
 // v1.3.50: [User-directed, spec-verified] Fixed v1.3.49's grid not actually
 //          shrinking. Root cause, confirmed via CSS Working Group discussion:
 //          repeat(auto-fit, minmax(min,max)) decides column COUNT using the
@@ -1331,8 +1344,7 @@ class ChronoHvacCard extends LitElement {
     }
     .mode-buttons::-webkit-scrollbar { display: none; }
     .mode-buttons > * {
-      min-width: 0;
-      max-width: 140px;
+      width: clamp(112px, 100%, 140px);
       justify-self: center;
     }
 
