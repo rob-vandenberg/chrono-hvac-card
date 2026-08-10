@@ -2,9 +2,20 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.3.47';
+const CARD_VERSION = '1.3.48';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.3.48: [User-measured] Made the 4-button case's width continuously
+//          shrinkable instead of a fixed 140px. .mode-buttons.multiline > *
+//          now uses flex:1 1 140px with min-width:112px, max-width:140px
+//          (overrides the shared .mode-buttons > * min-width:120px for this
+//          case only, via 2-class specificity). Buttons shrink together as
+//          available width drops below the 292px needed for two 140px
+//          buttons + gap, floor at 112px (matches the 244px budget measured
+//          inside chrono-popup at a 360px viewport). Below the 236px needed
+//          for two 112px buttons, flex-wrap forces a single column, where
+//          the lone button grows back to its 140px max-width. 2-item/
+//          3-item cases untouched.
 // v1.3.47: [User-measured] Removed .mode-buttons' padding:0 12px 0 12px.
 //          User's DevTools measurement confirmed .mode-buttons box was
 //          300px wide (items-4 max-width) with 12px horizontal padding on
@@ -1299,7 +1310,11 @@ class ChronoHvacCard extends LitElement {
     }
     .mode-buttons.items-4 { max-width: 300px; }
     .mode-buttons.items-3 > * { max-width: 140px; }
-    .mode-buttons.multiline > * { width: 140px; }
+    .mode-buttons.multiline > * {
+      flex: 1 1 140px;
+      min-width: 112px;
+      max-width: 140px;
+    }
 
   `;
 }
