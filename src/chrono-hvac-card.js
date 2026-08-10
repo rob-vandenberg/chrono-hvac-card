@@ -2,9 +2,26 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.5.62';
+const CARD_VERSION = '1.5.63';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.5.63: [User-directed, user-tuned] Adopted the negative-margin/padding
+//          construction (mirroring the mechanism found in native HA's own
+//          .controls-scroll row, though with independently-tuned
+//          magnitudes, not copied values) after live debug-build testing:
+//          max-width 294->316px, margin: -2px -12px, padding: 2px 12px 8px.
+//          User explicitly tested and accepted the known trade-off
+//          discussed before this change - negative margin lets the row
+//          visually bleed past its own parent-relative slot, so it doesn't
+//          react to the card shrinking until its own content-driven
+//          minimum forces a sudden correction, rather than shrinking
+//          smoothly the whole way like the plain-max-width v1.5.62
+//          construction did. Kept smaller in magnitude (12px vs. the 24px
+//          in native's own version tested earlier) specifically to reduce
+//          that plateau effect. New margin/padding values wrapped in
+//          var()s with these numbers as defaults, matching this file's
+//          established convention (the user's own debug snippet had them
+//          as plain literals - consistent var()-wrapping added here).
 // v1.5.62: [User-measured] Fixed the real cause of the horizontal button-gap
 //          issue - not gap itself. With max-width:320px, each of the 2
 //          grid tracks was (320-gap)/2, which exceeded 140px at any
@@ -1540,7 +1557,9 @@ class ChronoHvacCard extends LitElement {
       flex: none;
       gap: var(--mode-buttons-gap, 12px);
       width: 100%;
-      max-width: var(--mode-buttons-max-width, 294px);
+      max-width: var(--mode-buttons-max-width, 316px);
+      margin: var(--mode-buttons-margin, -2px -12px);
+      padding: var(--mode-buttons-padding, 2px 12px 8px);
       box-sizing: border-box;
       overflow: auto;
       -ms-overflow-style: none;
