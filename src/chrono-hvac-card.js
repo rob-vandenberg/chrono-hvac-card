@@ -2,9 +2,34 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.4.58';
+const CARD_VERSION = '1.5.59';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.5.59: [User-directed] Full flat DOM restructure, matching
+//          chrono-slider-card's minimal pattern. .hvac-content and .controls
+//          wrapper divs removed entirely - .header, .readouts,
+//          .circle-slider (renamed from .dial-container, including the
+//          ResizeObserver's query target), and .mode-buttons are now all
+//          direct children of ha-card, which takes over the layout role
+//          directly (display:flex; flex-direction:column; align-items:
+//          center;) since dropping ha-card.header removes the internal
+//          shadow-DOM <h1> alignment conflict that originally required the
+//          wrapper. Header is now hand-rendered (<p class="header">)
+//          instead of using ha-card's built-in .header property, styled to
+//          replicate its original look (24px, left-aligned by default,
+//          same 12px 16px 16px padding) via var()s - not copying
+//          chrono-slider-card's own centered/20px .title style, which was
+//          a deliberately different visual target. Every element now owns
+//          its own margin-top (spacing from whatever precedes it) with a
+//          minimal/zero margin-bottom, so toggling elements on/off no
+//          longer leaves inconsistent gaps - replaces .controls'
+//          margin-top+margin-bottom pair and .readouts/.dial-container's
+//          margin-bottom-only pattern. Also removed entirely: the
+//          more-info button (markup, _handleMoreInfo(), .more-info CSS,
+//          show_more_info_button from DEFAULT_CONFIG and its editor
+//          toggle) - vestigial from both cards' more-info-dialog origins,
+//          no longer needed now that chrono-popup provides its own close/
+//          header chrome.
 // v1.4.58: [User-directed] Implemented the styles: config mechanism, ported
 //          directly from chrono-slider-card_1.8.80.js's verified
 //          implementation (cscToKebab/cscBuildUserStylesCss/adoptedStyleSheets
@@ -858,7 +883,6 @@ const DEFAULT_CONFIG = {
   show_entity_name_fallback:  true,
   show_current_temperature:   true,
   show_current_humidity:      true,
-  show_more_info_button:      false,
   show_mode_button:           true,
   show_preset_button:         true,
   show_fan_button:            true,
@@ -1054,7 +1078,6 @@ class ChronoHvacCardEditor extends LitElement {
 
         <div class="section-title">Display</div>
         ${chToggleField('Show card border', c.show_border !== false, (e) => this._valueChanged('show_border', e))}
-        ${chToggleField('Show more-info button', c.show_more_info_button, (e) => this._valueChanged('show_more_info_button', e))}
         ${hasCurrentTemperature ? chToggleField('Show current temperature', c.show_current_temperature, (e) => this._valueChanged('show_current_temperature', e)) : ''}
         ${hasCurrentHumidity ? chToggleField('Show current humidity', c.show_current_humidity, (e) => this._valueChanged('show_current_humidity', e)) : ''}
 
@@ -1131,7 +1154,7 @@ class ChronoHvacCard extends LitElement {
   // overflow:hidden on wide-but-short cards.
   firstUpdated() {
     this._resizeObserver = new ResizeObserver((entries) => {
-      const container = entries[0]?.target.shadowRoot?.querySelector('.dial-container');
+      const container = entries[0]?.target.shadowRoot?.querySelector('.circle-slider');
       this._containerHeight = container?.clientHeight;
     });
     this._resizeObserver.observe(this);
@@ -1196,14 +1219,6 @@ class ChronoHvacCard extends LitElement {
       entity_id: this._config.entity,
       ...data,
     });
-  }
-
-  _handleMoreInfo() {
-    this.dispatchEvent(new CustomEvent('hass-more-info', {
-      detail: { entityId: this._config.entity },
-      bubbles: true,
-      composed: true,
-    }));
   }
 
   _setHvacMode(mode) {
@@ -1328,16 +1343,11 @@ class ChronoHvacCard extends LitElement {
     }
     const showTemp = this._config.show_current_temperature && attrs.current_temperature !== undefined;
     const showHumidity = this._config.show_current_humidity && attrs.current_humidity !== undefined;
-    const showMoreInfo = this._config.show_more_info_button;
 
     return html`
-      <ha-card .header=${name} class="ha-card ${this._config.show_border === false ? 'no-border' : ''}">
-        ${showMoreInfo ? html`
-          <ha-icon-button class="more-info" label="Show more info" @click=${this._handleMoreInfo} tabindex="0">
-            <ha-icon icon="mdi:dots-vertical"></ha-icon>
-          </ha-icon-button>
-        ` : ''}
-        <div class="hvac-content">
+      <ha-card class="ha-card ${this._config.show_border === false ? 'no-border' : ''}">
+        ${name ? html`<p class="header">${name}</p>` : ''}
+
         ${showTemp || showHumidity ? html`
           <div class="readouts">
             ${showTemp ? html`
@@ -1355,8 +1365,7 @@ class ChronoHvacCard extends LitElement {
           </div>
         ` : ''}
 
-        <div class="controls">
-        <div class="dial-container">
+        <div class="circle-slider">
           <ha-state-control-climate-temperature
             class="dial"
             style=${this._containerHeight ? `max-width:${this._containerHeight}px` : ''}
@@ -1371,8 +1380,6 @@ class ChronoHvacCard extends LitElement {
             ${featureRows}
           </div>
         ` : ''}
-        </div>
-        </div>
       </ha-card>
     `;
   }
@@ -1393,31 +1400,24 @@ class ChronoHvacCard extends LitElement {
       color: var(--primary-text-color, #fff);
       border-radius: var(--ha-card-border-radius, 12px);
       box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      overflow: hidden;
     }
     ha-card.no-border {
       border-width: 0;
     }
-    .hvac-content {
-      position: relative;
+    .header {
       width: 100%;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: space-between;
-      overflow: hidden;
       box-sizing: border-box;
-      padding: var(--hvac-content-padding, 8px);
-    }
-    .more-info {
-      position: absolute;
-      cursor: pointer;
-      top: 0;
-      right: 0;
-      inset-inline-end: 0px;
-      inset-inline-start: initial;
-      border-radius: var(--ha-border-radius-pill);
-      color: var(--secondary-text-color);
-      direction: var(--direction);
+      text-align: var(--header-text-align, left);
+      font-size: var(--header-font-size, 24px);
+      font-weight: var(--header-font-weight, 500);
+      line-height: var(--ha-line-height-normal, 1.2);
+      padding: var(--header-padding, 12px 16px 16px);
+      margin: 0;
+      color: var(--primary-text-color);
     }
     .warning {
       color: var(--error-color, #db4437);
@@ -1432,7 +1432,8 @@ class ChronoHvacCard extends LitElement {
       width: 100%;
       box-sizing: border-box;
       padding: var(--readouts-padding, 8px 16px 0 16px);
-      margin-bottom: var(--readouts-margin-bottom, 18px);
+      margin-top: var(--readouts-margin-top, 16px);
+      margin-bottom: var(--readouts-margin-bottom, 4px);
       flex: none;
     }
     .readout {
@@ -1462,33 +1463,25 @@ class ChronoHvacCard extends LitElement {
       line-height: var(--ha-line-height-condensed);
       direction: ltr;
     }
-    .controls {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      width: 100%;
-      box-sizing: border-box;
-      flex: 1;
-      margin-top: var(--controls-margin-top, 8px);
-      margin-bottom: var(--controls-margin-bottom, 8px);
-    }
-    .dial-container {
+    .circle-slider {
       display: flex;
       align-items: center;
       justify-content: center;
       position: relative;
       overflow: hidden;
       max-width: 100%;
+      width: 100%;
       box-sizing: border-box;
       flex: 1;
-      margin-bottom: var(--dial-container-margin-bottom, 16px);
+      margin-top: var(--circle-slider-margin-top, 16px);
+      margin-bottom: var(--circle-slider-margin-bottom, 4px);
     }
-    .dial-container::before {
+    .circle-slider::before {
       content: "";
       display: block;
       padding-top: 100%;
     }
-    .dial-container > * {
+    .circle-slider > * {
       padding: var(--dial-padding, 8px);
     }
     .mode-buttons {
@@ -1503,6 +1496,8 @@ class ChronoHvacCard extends LitElement {
       overflow: auto;
       -ms-overflow-style: none;
       scrollbar-width: none;
+      margin-top: var(--mode-buttons-margin-top, 16px);
+      margin-bottom: 0;
     }
     .mode-buttons::-webkit-scrollbar { display: none; }
     .mode-buttons > * {
