@@ -2,9 +2,25 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.3.48';
+const CARD_VERSION = '1.3.49';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.3.49: [User-directed] Replaced all per-item-count CSS (items-4,
+//          items-3, multiline) with a single universal rule that applies
+//          identically regardless of how many buttons are present (1, 2,
+//          3, 4, or more). .mode-buttons now uses
+//          grid-template-columns: repeat(auto-fit, minmax(112px, 140px))
+//          with max-width:320px (matches the dial's real measured width
+//          at 1920x1080, up from the old 300px). auto-fit/minmax
+//          continuously shrinks buttons from 140px down to 112px before
+//          dropping a column, and Grid's default auto-placement wraps any
+//          excess items onto new rows automatically - no per-count
+//          selectors needed. With a 320px cap, 3 buttons at minimum width
+//          (360px) can never fit on one line, so columns are capped at 2
+//          purely by that arithmetic: 4 buttons -> 2x2, 3 -> 2+1,
+//          5 -> 2+2+1, 6 -> 2+2+2, etc. Removed modeButtonsClass (the old
+//          items-${length}/multiline string) - .mode-buttons is now a
+//          plain, unparameterized class.
 // v1.3.48: [User-measured] Made the 4-button case's width continuously
 //          shrinkable instead of a fixed 140px. .mode-buttons.multiline > *
 //          now uses flex:1 1 140px with min-width:112px, max-width:140px
@@ -1125,8 +1141,6 @@ class ChronoHvacCard extends LitElement {
     if (this._config.show_swing_button && swingModes.length) {
       featureRows.push(this._renderAttributeRow('Swing mode', 'swing_mode', swingModes, attrs.swing_mode, (v) => this._setSwingMode(v), featureRowsDisabled));
     }
-    const modeButtonsClass = `mode-buttons items-${featureRows.length}${featureRows.length >= 4 ? ' multiline' : ''}`;
-
     const showTemp = this._config.show_current_temperature && attrs.current_temperature !== undefined;
     const showHumidity = this._config.show_current_humidity && attrs.current_humidity !== undefined;
     const showMoreInfo = this._config.show_more_info_button;
@@ -1167,7 +1181,7 @@ class ChronoHvacCard extends LitElement {
         </div>
 
         ${featureRows.length ? html`
-          <div class="${modeButtonsClass}">
+          <div class="mode-buttons">
             ${featureRows}
           </div>
         ` : ''}
@@ -1288,32 +1302,22 @@ class ChronoHvacCard extends LitElement {
       padding: 8px;
     }
     .mode-buttons {
-      display: flex;
-      flex-direction: row;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(112px, 140px));
       justify-content: center;
-      flex-wrap: wrap;
       flex: none;
       gap: var(--ha-space-3, 12px);
       width: 100%;
-      max-width: 450px;
+      max-width: 320px;
       box-sizing: border-box;
       overflow: auto;
       -ms-overflow-style: none;
       scrollbar-width: none;
-      min-width: 0;
     }
     .mode-buttons::-webkit-scrollbar { display: none; }
     .mode-buttons > * {
-      min-width: 120px;
-      max-width: 160px;
-      flex: none;
-    }
-    .mode-buttons.items-4 { max-width: 300px; }
-    .mode-buttons.items-3 > * { max-width: 140px; }
-    .mode-buttons.multiline > * {
-      flex: 1 1 140px;
-      min-width: 112px;
-      max-width: 140px;
+      min-width: 0;
+      max-width: none;
     }
 
   `;
