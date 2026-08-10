@@ -2,9 +2,30 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.5.59';
+const CARD_VERSION = '1.5.60';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.5.60: [User-directed] Recalibrated spacing after v1.5.59's flat
+//          restructure to reproduce v1.4.58's exact total gaps at every
+//          transition, traced contributor-by-contributor (old padding +
+//          margin layers from .hvac-content/.controls/.dial-container,
+//          which no longer exist, added back as single values on the
+//          elements that remain). ha-card gains
+//          padding: var(--ha-card-padding, 0 8px 16px 8px) - restores the
+//          horizontal inset .hvac-content used to provide (which the
+//          mode-buttons/circle-slider shrink calibration depends on) and
+//          the missing bottom frame gap (mode-buttons has margin-bottom:0
+//          by the new "owns its top-margin" convention, so it needs the
+//          card's own bottom padding to not sit flush against the border).
+//          .header's own left/right padding reduced 16px->8px to
+//          compensate for ha-card's new horizontal padding stacking with
+//          it (header used to live in ha-card's separate internal shadow
+//          DOM, unaffected by .hvac-content's padding - now a normal
+//          child, so it would double up unless reduced). .readouts
+//          margin-top 16->8px, .circle-slider margin-top 16->22px,
+//          .mode-buttons margin-top 16->12px. Verified against both
+//          header-present and headerless cases reproducing identical old
+//          totals.
 // v1.5.59: [User-directed] Full flat DOM restructure, matching
 //          chrono-slider-card's minimal pattern. .hvac-content and .controls
 //          wrapper divs removed entirely - .header, .readouts,
@@ -1395,7 +1416,7 @@ class ChronoHvacCard extends LitElement {
       position: relative;
       height: 100%;
       width: 100%;
-      padding: 0;
+      padding: var(--ha-card-padding, 0 8px 16px 8px);
       background: var(--card-background-color, #1a1a1a);
       color: var(--primary-text-color, #fff);
       border-radius: var(--ha-card-border-radius, 12px);
@@ -1415,7 +1436,7 @@ class ChronoHvacCard extends LitElement {
       font-size: var(--header-font-size, 24px);
       font-weight: var(--header-font-weight, 500);
       line-height: var(--ha-line-height-normal, 1.2);
-      padding: var(--header-padding, 12px 16px 16px);
+      padding: var(--header-padding, 12px 8px 16px);
       margin: 0;
       color: var(--primary-text-color);
     }
@@ -1432,7 +1453,7 @@ class ChronoHvacCard extends LitElement {
       width: 100%;
       box-sizing: border-box;
       padding: var(--readouts-padding, 8px 16px 0 16px);
-      margin-top: var(--readouts-margin-top, 16px);
+      margin-top: var(--readouts-margin-top, 8px);
       margin-bottom: var(--readouts-margin-bottom, 4px);
       flex: none;
     }
@@ -1473,7 +1494,7 @@ class ChronoHvacCard extends LitElement {
       width: 100%;
       box-sizing: border-box;
       flex: 1;
-      margin-top: var(--circle-slider-margin-top, 16px);
+      margin-top: var(--circle-slider-margin-top, 22px);
       margin-bottom: var(--circle-slider-margin-bottom, 4px);
     }
     .circle-slider::before {
@@ -1496,7 +1517,7 @@ class ChronoHvacCard extends LitElement {
       overflow: auto;
       -ms-overflow-style: none;
       scrollbar-width: none;
-      margin-top: var(--mode-buttons-margin-top, 16px);
+      margin-top: var(--mode-buttons-margin-top, 12px);
       margin-bottom: 0;
     }
     .mode-buttons::-webkit-scrollbar { display: none; }
