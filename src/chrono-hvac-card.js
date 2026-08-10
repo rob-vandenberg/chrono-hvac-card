@@ -2,9 +2,24 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.4.57';
+const CARD_VERSION = '1.4.58';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.4.58: [User-directed] Implemented the styles: config mechanism, ported
+//          directly from chrono-slider-card_1.8.80.js's verified
+//          implementation (cscToKebab/cscBuildUserStylesCss/adoptedStyleSheets
+//          pattern), renamed to this file's own ch- naming convention.
+//          config.styles ({ class_name: { property: value } }) is converted
+//          to real CSS text and adopted via renderRoot.adoptedStyleSheets,
+//          appended after Lit's own static-style sheets - adopted
+//          stylesheets win cascade ties against inline <style> tags and
+//          normal specificity regardless of DOM position (platform default
+//          styleOrder behavior), which is what lets a styles: override win
+//          against any property this card's own static styles already set,
+//          not just undeclared ones. Reserved 'host' key maps to :host.
+//          Rebuilt on every setConfig() call (not just once), so editor
+//          changes take effect live. No _stateStyleSheet equivalent -
+//          that part of chrono-slider-card is unrelated to styles: itself.
 // v1.4.57: [User-directed] Renamed .card-content -> .hvac-content. The old
 //          name specifically matched ha-card.ts's internal trigger for its
 //          automatic conditional padding (16px flat, or header-aware
@@ -851,6 +866,33 @@ const DEFAULT_CONFIG = {
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+// Converts a snake_case string to kebab-case. Used for both class names and
+// CSS property names coming from config.styles, since CSS text treats them
+// identically syntactically.
+function chToKebab(str) {
+  return String(str).replace(/_/g, '-');
+}
+
+// Converts config.styles (a flat { class_name: { property: value } } object)
+// into a single ready-to-inject CSS text block. No validation of class names
+// or property names against anything - any key the user writes is accepted
+// and converted as-is; this is a literal YAML->CSS translation, not a
+// filtered one. One reserved key: 'host' targets the card's own :host
+// element (a pseudo-class, not a real class) instead of .host - there is
+// no class="host" anywhere in this card's markup, so this can't collide.
+function chBuildUserStylesCss(stylesConfig) {
+  let css = '';
+  for (const [className, props] of Object.entries(stylesConfig)) {
+    if (!props || typeof props !== 'object' || Array.isArray(props)) continue;
+    const declarations = Object.entries(props)
+      .map(([prop, value]) => `${chToKebab(prop)}: ${value};`)
+      .join(' ');
+    const selector = className === 'host' ? ':host' : `.${chToKebab(className)}`;
+    css += `${selector} { ${declarations} }\n`;
+  }
+  return css;
+}
+
 function chCapitalize(str) {
   if (!str) return '';
   return str.charAt(0).toUpperCase() + str.slice(1).replace(/_/g, ' ');
@@ -1079,6 +1121,7 @@ class ChronoHvacCard extends LitElement {
     super();
     this._attrIconCache = {};
     this._containerHeight = undefined;
+    this._userStyleSheet = new CSSStyleSheet();
   }
 
   // Native browser ResizeObserver - built in, no import, no CDN/CORS risk.
@@ -1092,6 +1135,15 @@ class ChronoHvacCard extends LitElement {
       this._containerHeight = container?.clientHeight;
     });
     this._resizeObserver.observe(this);
+
+    // Appended after Lit's own static-style sheets (already present in
+    // adoptedStyleSheets by this point) so styles: overrides win cascade
+    // ties against them, on any property, not just ones the built-in
+    // styles leave undeclared.
+    this.renderRoot.adoptedStyleSheets = [
+      ...this.renderRoot.adoptedStyleSheets,
+      this._userStyleSheet,
+    ];
   }
 
   disconnectedCallback() {
@@ -1113,6 +1165,13 @@ class ChronoHvacCard extends LitElement {
       throw new Error('Specify an entity from the climate domain');
     }
     this._config = { ...DEFAULT_CONFIG, ...config };
+
+    let stylesConfig = config.styles;
+    if (stylesConfig !== undefined && (typeof stylesConfig !== 'object' || Array.isArray(stylesConfig))) {
+      console.warn('chrono-hvac-card: "styles" must be an object, ignoring.');
+      stylesConfig = {};
+    }
+    this._userStyleSheet.replaceSync(chBuildUserStylesCss(stylesConfig || {}));
   }
 
   getCardSize() {
