@@ -2,9 +2,26 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.5.61';
+const CARD_VERSION = '1.5.62';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.5.62: [User-measured] Fixed the real cause of the horizontal button-gap
+//          issue - not gap itself. With max-width:320px, each of the 2
+//          grid tracks was (320-gap)/2, which exceeded 140px at any
+//          reasonable gap value, so clamp(112px,100%,140px) capped the
+//          button at 140px regardless - the leftover track space became
+//          invisible overhang on both sides of each button, absorbing
+//          gap changes instead of showing them (confirmed via user's
+//          getBoundingClientRect measurements at gap:14 vs gap:28 -
+//          identical button width/position both times). Lowered
+//          max-width to 294px, which brings the track width (141px) down
+//          to just above the button's own 140px cap, eliminating the
+//          overhang almost entirely. gap reverted to 12px (the +14px
+//          widening from v1.5.61 is no longer needed - the actual fix
+//          was the max-width reduction, not a wider gap). User confirmed
+//          pixel-perfect alignment with the real clamp() restored (was
+//          temporarily replaced with a flat 140px during isolation
+//          testing, to compare like with like).
 // v1.5.61: [User-measured] Pixel-level spacing correction against a 50%-
 //          transparent overlay comparison with HA's native more-info
 //          dialog, aligned stage-by-stage (not cumulative - each value is
@@ -1521,9 +1538,9 @@ class ChronoHvacCard extends LitElement {
       grid-template-columns: repeat(auto-fit, minmax(var(--mode-button-min-width, 112px), 1fr));
       justify-content: center;
       flex: none;
-      gap: var(--mode-buttons-gap, 26px);
+      gap: var(--mode-buttons-gap, 12px);
       width: 100%;
-      max-width: var(--mode-buttons-max-width, 320px);
+      max-width: var(--mode-buttons-max-width, 294px);
       box-sizing: border-box;
       overflow: auto;
       -ms-overflow-style: none;
