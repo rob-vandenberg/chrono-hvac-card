@@ -2,9 +2,14 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.4.53';
+const CARD_VERSION = '1.4.54';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.4.54: [User-directed] Added default 8px top/bottom margin to .controls
+//          (previously 0/unset), as var(--controls-margin-top, 8px) and
+//          var(--controls-margin-bottom, 8px), matching the unprefixed
+//          naming convention from the previous step. .dial-container and
+//          .readouts' own existing margins untouched.
 // v1.4.53: [User-directed] Step 2 of styles: support - converted cosmetic/
 //          spacing/sizing literal values in static styles to
 //          var(--name, default), following chrono-slider-card's convention.
@@ -1357,6 +1362,8 @@ class ChronoHvacCard extends LitElement {
       width: 100%;
       box-sizing: border-box;
       flex: 1;
+      margin-top: var(--controls-margin-top, 8px);
+      margin-bottom: var(--controls-margin-bottom, 8px);
     }
     .dial-container {
       display: flex;
