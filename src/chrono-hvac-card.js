@@ -2,9 +2,27 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.4.54';
+const CARD_VERSION = '1.4.55';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.4.55: [User-directed] Two config changes. (1) show_border: removed from
+//          DEFAULT_CONFIG, so a fresh card no longer gets it written into
+//          its yaml at all - the true/undefined/false distinction is now
+//          real: undefined (key absent) leaves ha-card fully untouched
+//          (native theme default border), only an explicit false applies
+//          the no-border class. Editor's toggle stays a plain two-state
+//          switch by design (confirmed) - touching it writes a literal
+//          value into the config; removing that value again requires
+//          editing yaml directly, which is the intended behavior. (2)
+//          Added static getStubConfig(hass), replacing the old parameterless
+//          version - scans hass.states for the first climate.* entity and
+//          pre-fills it as the default entity when a new card is added,
+//          per HA's real getStubConfig(hass, entities, entitiesFallback)
+//          convention (verified against hui-gauge-card.ts/hui-picture-
+//          glance-card.ts source), simplified since we only need a single
+//          domain match, not de-duplication against other dashboard cards.
+//          show_entity_name_fallback removal and additional editor toggles
+//          explicitly deferred by user request - not part of this change.
 // v1.4.54: [User-directed] Added default 8px top/bottom margin to .controls
 //          (previously 0/unset), as var(--controls-margin-top, 8px) and
 //          var(--controls-margin-bottom, 8px), matching the unprefixed
@@ -801,7 +819,6 @@ const DEFAULT_CONFIG = {
   show_preset_button:         true,
   show_fan_button:            true,
   show_swing_button:          true,
-  show_border:                true,
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -1077,8 +1094,9 @@ class ChronoHvacCard extends LitElement {
     return document.createElement('chrono-hvac-card-editor');
   }
 
-  static getStubConfig() {
-    return { ...DEFAULT_CONFIG };
+  static getStubConfig(hass) {
+    const climateEntities = Object.keys(hass?.states || {}).filter((id) => id.startsWith('climate.'));
+    return { ...DEFAULT_CONFIG, entity: climateEntities[0] || '' };
   }
 
   get _stateObj() {
@@ -1225,7 +1243,7 @@ class ChronoHvacCard extends LitElement {
     const showMoreInfo = this._config.show_more_info_button;
 
     return html`
-      <ha-card .header=${name} class="ha-card ${this._config.show_border ? '' : 'no-border'}">
+      <ha-card .header=${name} class="ha-card ${this._config.show_border === false ? 'no-border' : ''}">
         ${showMoreInfo ? html`
           <ha-icon-button class="more-info" label="Show more info" @click=${this._handleMoreInfo} tabindex="0">
             <ha-icon icon="mdi:dots-vertical"></ha-icon>
