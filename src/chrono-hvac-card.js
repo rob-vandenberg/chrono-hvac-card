@@ -2,9 +2,29 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.5.63';
+const CARD_VERSION = '1.5.64';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.5.64: [User-measured] Fixed .circle-slider stretching to absorb
+//          leftover vertical space in taller containers (measured: 322px
+//          height with a 322px dial on a 340px-wide dashboard instance vs.
+//          452px height with only a 336px dial on a 470px-wide editor
+//          preview instance - a 116px unaccounted gap, scaling with
+//          whatever extra room the surrounding grid/preview pane happened
+//          to give the card). Root cause: .circle-slider still carried
+//          flex:1 from the old .dial-container (left untouched during the
+//          v1.5.59 restructure, per instruction to leave internals as-is)
+//          - with ha-card's own height:100% taking its size from its
+//          parent rather than its content, flex:1 let .circle-slider (the
+//          only growable child) absorb all leftover vertical space,
+//          different in every context. Direct violation of this project's
+//          own zero-container-aware-code rule (transfer doc S3.1) - a
+//          card sizing to its own content, not stretching to fill
+//          whatever height its container happens to provide, is the
+//          documented, correct default. Removed flex:1 entirely -
+//          .circle-slider now sizes purely from its own aspect-ratio
+//          ::before trick (width-driven), identically regardless of
+//          surrounding container height.
 // v1.5.63: [User-directed, user-tuned] Adopted the negative-margin/padding
 //          construction (mirroring the mechanism found in native HA's own
 //          .controls-scroll row, though with independently-tuned
@@ -1538,7 +1558,6 @@ class ChronoHvacCard extends LitElement {
       max-width: 100%;
       width: 100%;
       box-sizing: border-box;
-      flex: 1;
       margin-top: var(--circle-slider-margin-top, 25px);
       margin-bottom: var(--circle-slider-margin-bottom, 4px);
     }
