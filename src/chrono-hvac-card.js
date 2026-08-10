@@ -2,9 +2,20 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.5.60';
+const CARD_VERSION = '1.5.61';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.5.61: [User-measured] Pixel-level spacing correction against a 50%-
+//          transparent overlay comparison with HA's native more-info
+//          dialog, aligned stage-by-stage (not cumulative - each value is
+//          the direct adjustment for that one transition, re-anchored from
+//          the previous element's already-aligned position). .readouts
+//          margin-top 8->6px (2px up), .readout-label margin-bottom
+//          2->4px (2px down), .circle-slider margin-top 22->25px (3px
+//          down), .mode-buttons margin-top 12->9px (3px up). Button gap
+//          decoupled from the shared var(--ha-space-3) HA token into its
+//          own var(--mode-buttons-gap, 26px) (12+14px) so the +14px
+//          widening doesn't affect anything else referencing that token.
 // v1.5.60: [User-directed] Recalibrated spacing after v1.5.59's flat
 //          restructure to reproduce v1.4.58's exact total gaps at every
 //          transition, traced contributor-by-contributor (old padding +
@@ -1453,7 +1464,7 @@ class ChronoHvacCard extends LitElement {
       width: 100%;
       box-sizing: border-box;
       padding: var(--readouts-padding, 8px 16px 0 16px);
-      margin-top: var(--readouts-margin-top, 8px);
+      margin-top: var(--readouts-margin-top, 6px);
       margin-bottom: var(--readouts-margin-bottom, 4px);
       flex: none;
     }
@@ -1476,7 +1487,7 @@ class ChronoHvacCard extends LitElement {
       font-size: var(--ha-font-size-m);
       line-height: var(--ha-line-height-condensed);
       letter-spacing: var(--readout-label-letter-spacing, 0.4px);
-      margin-bottom: var(--readout-label-margin-bottom, 2px);
+      margin-bottom: var(--readout-label-margin-bottom, 4px);
     }
     .readout-value {
       font-size: var(--ha-font-size-xl);
@@ -1494,7 +1505,7 @@ class ChronoHvacCard extends LitElement {
       width: 100%;
       box-sizing: border-box;
       flex: 1;
-      margin-top: var(--circle-slider-margin-top, 22px);
+      margin-top: var(--circle-slider-margin-top, 25px);
       margin-bottom: var(--circle-slider-margin-bottom, 4px);
     }
     .circle-slider::before {
@@ -1510,14 +1521,14 @@ class ChronoHvacCard extends LitElement {
       grid-template-columns: repeat(auto-fit, minmax(var(--mode-button-min-width, 112px), 1fr));
       justify-content: center;
       flex: none;
-      gap: var(--ha-space-3, 12px);
+      gap: var(--mode-buttons-gap, 26px);
       width: 100%;
       max-width: var(--mode-buttons-max-width, 320px);
       box-sizing: border-box;
       overflow: auto;
       -ms-overflow-style: none;
       scrollbar-width: none;
-      margin-top: var(--mode-buttons-margin-top, 12px);
+      margin-top: var(--mode-buttons-margin-top, 9px);
       margin-bottom: 0;
     }
     .mode-buttons::-webkit-scrollbar { display: none; }
