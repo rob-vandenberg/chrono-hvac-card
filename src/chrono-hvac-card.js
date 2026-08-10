@@ -2,9 +2,19 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.4.55';
+const CARD_VERSION = '1.4.56';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.4.56: [User-directed] Editor's "Show card border" toggle now displays
+//          checked whenever show_border is true OR undefined (only unchecked
+//          when explicitly false) - c.show_border !== false instead of
+//          c.show_border. Purely a display default; the underlying config
+//          value is untouched until the user actually interacts with the
+//          toggle, preserving the v1.4.55 tri-state persistence behavior
+//          exactly. Deliberately dropped the real-DOM border-measurement
+//          approach discussed at length - untested in this session (never
+//          actually verified via a debug build), so not shipped on a
+//          gamble. No firstUpdated() changes, no measurement, no caching.
 // v1.4.55: [User-directed] Two config changes. (1) show_border: removed from
 //          DEFAULT_CONFIG, so a fresh card no longer gets it written into
 //          its yaml at all - the true/undefined/false distinction is now
@@ -982,7 +992,7 @@ class ChronoHvacCardEditor extends LitElement {
         </div>
 
         <div class="section-title">Display</div>
-        ${chToggleField('Show card border', c.show_border, (e) => this._valueChanged('show_border', e))}
+        ${chToggleField('Show card border', c.show_border !== false, (e) => this._valueChanged('show_border', e))}
         ${chToggleField('Show more-info button', c.show_more_info_button, (e) => this._valueChanged('show_more_info_button', e))}
         ${hasCurrentTemperature ? chToggleField('Show current temperature', c.show_current_temperature, (e) => this._valueChanged('show_current_temperature', e)) : ''}
         ${hasCurrentHumidity ? chToggleField('Show current humidity', c.show_current_humidity, (e) => this._valueChanged('show_current_humidity', e)) : ''}
