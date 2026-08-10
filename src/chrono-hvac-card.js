@@ -2,9 +2,10 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.5.64';
+const CARD_VERSION = '1.5.65';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.5.65: Made card behave nicely inside UI editor.
 // v1.5.64: [User-measured] Fixed .circle-slider stretching to absorb
 //          leftover vertical space in taller containers (measured: 322px
 //          height with a 322px dial on a 340px-wide dashboard instance vs.
@@ -1475,6 +1476,8 @@ class ChronoHvacCard extends LitElement {
       display: block;
       position: relative;
       height: 100%;
+      max-width: 360px;
+      margin: 0 auto;
       font-family: var(--ha-font-family-body, inherit);
     }
     ha-card {
