@@ -2,9 +2,28 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.3.51';
+const CARD_VERSION = '1.4.52';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.4.52: [User-directed] Step 1 of styles: support - DOM structure and
+//          classname pass only, no visual/behavioral change. Mirrors
+//          chrono-slider-card's shared+unique classname convention
+//          (e.g. control-button/control-button-open there ->
+//          mode-button/mode-button-mode here). Renamed .container ->
+//          .dial-container (avoids the collision with HA's own native
+//          .container inside hui-sections-view, discovered this session)
+//          and .current -> .readouts. Added classes that were previously
+//          entirely absent: ha-card itself, the two readout wrapper divs
+//          (readout/readout-temperature, readout/readout-humidity), their
+//          label/value <p> tags, the dial element, each of the four mode/
+//          preset/fan/swing buttons (mode-button/mode-button-<type>), and
+//          each button's icon (mode-button-icon/mode-button-icon-<type>).
+//          .card-content intentionally kept, unlike slider-card which has
+//          no equivalent wrapper - it's required for ha-card.ts's own
+//          automatic conditional padding mechanism (documented earlier
+//          this project), which slider-card doesn't rely on. All CSS
+//          selectors updated to match; no property values changed. var()
+//          conversion is a separate, later step.
 // v1.3.51: [User-directed, spec-verified] Fixed v1.3.50's justify-self:center
 //          making each button size to its own icon+label content instead of
 //          its track (measured: 82/87/106/120px, all below the 112px floor,
@@ -995,7 +1014,7 @@ class ChronoHvacCard extends LitElement {
   // overflow:hidden on wide-but-short cards.
   firstUpdated() {
     this._resizeObserver = new ResizeObserver((entries) => {
-      const container = entries[0]?.target.shadowRoot?.querySelector('.container');
+      const container = entries[0]?.target.shadowRoot?.querySelector('.dial-container');
       this._containerHeight = container?.clientHeight;
     });
     this._resizeObserver.observe(this);
@@ -1095,6 +1114,7 @@ class ChronoHvacCard extends LitElement {
     }));
     return html`
       <ha-control-select-menu
+        class="mode-button mode-button-mode"
         .label=${'Mode'}
         .value=${currentMode}
         .options=${opts}
@@ -1104,7 +1124,7 @@ class ChronoHvacCard extends LitElement {
           if (value !== undefined && value !== currentMode) this._setHvacMode(value);
         }}
       >
-        <ha-icon slot="icon" icon=${chHvacModeIcon(currentMode)}></ha-icon>
+        <ha-icon class="mode-button-icon mode-button-icon-mode" slot="icon" icon=${chHvacModeIcon(currentMode)}></ha-icon>
       </ha-control-select-menu>
     `;
   }
@@ -1115,8 +1135,11 @@ class ChronoHvacCard extends LitElement {
       const icon = this._getAttributeIcon(attribute, value);
       return html`<ha-icon icon=${icon || 'mdi:circle-small'}></ha-icon>`;
     };
+    const attrClass = `mode-button-${attribute.replace(/_mode$/, '')}`;
+    const iconClass = `mode-button-icon-${attribute.replace(/_mode$/, '')}`;
     return html`
       <ha-control-select-menu
+        class="mode-button ${attrClass}"
         .label=${label}
         .value=${currentValue}
         .options=${opts}
@@ -1127,7 +1150,7 @@ class ChronoHvacCard extends LitElement {
           if (value !== undefined && value !== currentValue) onChange(value);
         }}
       >
-        <ha-icon slot="icon" icon=${this._getAttributeIcon(attribute, currentValue) || 'mdi:circle-small'}></ha-icon>
+        <ha-icon class="mode-button-icon ${iconClass}" slot="icon" icon=${this._getAttributeIcon(attribute, currentValue) || 'mdi:circle-small'}></ha-icon>
       </ha-control-select-menu>
     `;
   }
@@ -1174,7 +1197,7 @@ class ChronoHvacCard extends LitElement {
     const showMoreInfo = this._config.show_more_info_button;
 
     return html`
-      <ha-card .header=${name} class="${this._config.show_border ? '' : 'no-border'}">
+      <ha-card .header=${name} class="ha-card ${this._config.show_border ? '' : 'no-border'}">
         ${showMoreInfo ? html`
           <ha-icon-button class="more-info" label="Show more info" @click=${this._handleMoreInfo} tabindex="0">
             <ha-icon icon="mdi:dots-vertical"></ha-icon>
@@ -1182,25 +1205,26 @@ class ChronoHvacCard extends LitElement {
         ` : ''}
         <div class="card-content">
         ${showTemp || showHumidity ? html`
-          <div class="current">
+          <div class="readouts">
             ${showTemp ? html`
-              <div>
-                <p class="label">Current temperature</p>
-                <p class="value">${attrs.current_temperature}°C</p>
+              <div class="readout readout-temperature">
+                <p class="readout-label readout-label-temperature">Current temperature</p>
+                <p class="readout-value readout-value-temperature">${attrs.current_temperature}°C</p>
               </div>
             ` : ''}
             ${showHumidity ? html`
-              <div>
-                <p class="label">Current humidity</p>
-                <p class="value">${attrs.current_humidity}%</p>
+              <div class="readout readout-humidity">
+                <p class="readout-label readout-label-humidity">Current humidity</p>
+                <p class="readout-value readout-value-humidity">${attrs.current_humidity}%</p>
               </div>
             ` : ''}
           </div>
         ` : ''}
 
         <div class="controls">
-        <div class="container">
+        <div class="dial-container">
           <ha-state-control-climate-temperature
+            class="dial"
             style=${this._containerHeight ? `max-width:${this._containerHeight}px` : ''}
             prevent-interaction-on-scroll
             show-secondary
@@ -1264,7 +1288,7 @@ class ChronoHvacCard extends LitElement {
       color: var(--error-color, #db4437);
       padding: 16px;
     }
-    .current {
+    .readouts {
       display: flex;
       flex-direction: row;
       align-items: center;
@@ -1276,7 +1300,7 @@ class ChronoHvacCard extends LitElement {
       margin-bottom: 18px;
       flex: none;
     }
-    .current div {
+    .readout {
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -1284,19 +1308,20 @@ class ChronoHvacCard extends LitElement {
       text-align: center;
       flex: 1;
     }
-    .current p {
+    .readout-label,
+    .readout-value {
       margin: 0;
       text-align: center;
       color: var(--primary-text-color);
     }
-    .current .label {
+    .readout-label {
       opacity: 0.8;
       font-size: var(--ha-font-size-m);
       line-height: var(--ha-line-height-condensed);
       letter-spacing: 0.4px;
       margin-bottom: 2px;
     }
-    .current .value {
+    .readout-value {
       font-size: var(--ha-font-size-xl);
       font-weight: var(--ha-font-weight-medium);
       line-height: var(--ha-line-height-condensed);
@@ -1310,7 +1335,7 @@ class ChronoHvacCard extends LitElement {
       box-sizing: border-box;
       flex: 1;
     }
-    .container {
+    .dial-container {
       display: flex;
       align-items: center;
       justify-content: center;
@@ -1321,12 +1346,12 @@ class ChronoHvacCard extends LitElement {
       flex: 1;
       margin-bottom: 16px;
     }
-    .container::before {
+    .dial-container::before {
       content: "";
       display: block;
       padding-top: 100%;
     }
-    .container > * {
+    .dial-container > * {
       padding: 8px;
     }
     .mode-buttons {
