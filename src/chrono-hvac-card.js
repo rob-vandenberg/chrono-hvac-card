@@ -2,9 +2,17 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.3.46';
+const CARD_VERSION = '1.3.47';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.3.47: [User-measured] Removed .mode-buttons' padding:0 12px 0 12px.
+//          User's DevTools measurement confirmed .mode-buttons box was
+//          300px wide (items-4 max-width) with 12px horizontal padding on
+//          a border-box element, leaving only 276px content width - 16px
+//          short of the 292px needed for 2x140px buttons + 12px gap,
+//          causing the 1-column collapse. .card-content's own automatic
+//          16px/side padding (from ha-card.ts) still keeps the row off
+//          the card edges without this element's own padding.
 // v1.3.46: Restructured the mode/fan/swing button row to follow the same
 //          pattern chrono-slider-card uses for its .favorites section:
 //          the wrapping row is now a direct child of a column-flex parent
@@ -1278,7 +1286,6 @@ class ChronoHvacCard extends LitElement {
       width: 100%;
       max-width: 450px;
       box-sizing: border-box;
-      padding: 0 12px 0 12px;
       overflow: auto;
       -ms-overflow-style: none;
       scrollbar-width: none;
