@@ -2,855 +2,144 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.5.65';
+const CARD_VERSION = '1.5.66';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.5.66: Condensed version history comments.
 // v1.5.65: Made card behave nicely inside UI editor.
-// v1.5.64: [User-measured] Fixed .circle-slider stretching to absorb
-//          leftover vertical space in taller containers (measured: 322px
-//          height with a 322px dial on a 340px-wide dashboard instance vs.
-//          452px height with only a 336px dial on a 470px-wide editor
-//          preview instance - a 116px unaccounted gap, scaling with
-//          whatever extra room the surrounding grid/preview pane happened
-//          to give the card). Root cause: .circle-slider still carried
-//          flex:1 from the old .dial-container (left untouched during the
-//          v1.5.59 restructure, per instruction to leave internals as-is)
-//          - with ha-card's own height:100% taking its size from its
-//          parent rather than its content, flex:1 let .circle-slider (the
-//          only growable child) absorb all leftover vertical space,
-//          different in every context. Direct violation of this project's
-//          own zero-container-aware-code rule (transfer doc S3.1) - a
-//          card sizing to its own content, not stretching to fill
-//          whatever height its container happens to provide, is the
-//          documented, correct default. Removed flex:1 entirely -
-//          .circle-slider now sizes purely from its own aspect-ratio
-//          ::before trick (width-driven), identically regardless of
-//          surrounding container height.
-// v1.5.63: [User-directed, user-tuned] Adopted the negative-margin/padding
-//          construction (mirroring the mechanism found in native HA's own
-//          .controls-scroll row, though with independently-tuned
-//          magnitudes, not copied values) after live debug-build testing:
-//          max-width 294->316px, margin: -2px -12px, padding: 2px 12px 8px.
-//          User explicitly tested and accepted the known trade-off
-//          discussed before this change - negative margin lets the row
-//          visually bleed past its own parent-relative slot, so it doesn't
-//          react to the card shrinking until its own content-driven
-//          minimum forces a sudden correction, rather than shrinking
-//          smoothly the whole way like the plain-max-width v1.5.62
-//          construction did. Kept smaller in magnitude (12px vs. the 24px
-//          in native's own version tested earlier) specifically to reduce
-//          that plateau effect. New margin/padding values wrapped in
-//          var()s with these numbers as defaults, matching this file's
-//          established convention (the user's own debug snippet had them
-//          as plain literals - consistent var()-wrapping added here).
-// v1.5.62: [User-measured] Fixed the real cause of the horizontal button-gap
-//          issue - not gap itself. With max-width:320px, each of the 2
-//          grid tracks was (320-gap)/2, which exceeded 140px at any
-//          reasonable gap value, so clamp(112px,100%,140px) capped the
-//          button at 140px regardless - the leftover track space became
-//          invisible overhang on both sides of each button, absorbing
-//          gap changes instead of showing them (confirmed via user's
-//          getBoundingClientRect measurements at gap:14 vs gap:28 -
-//          identical button width/position both times). Lowered
-//          max-width to 294px, which brings the track width (141px) down
-//          to just above the button's own 140px cap, eliminating the
-//          overhang almost entirely. gap reverted to 12px (the +14px
-//          widening from v1.5.61 is no longer needed - the actual fix
-//          was the max-width reduction, not a wider gap). User confirmed
-//          pixel-perfect alignment with the real clamp() restored (was
-//          temporarily replaced with a flat 140px during isolation
-//          testing, to compare like with like).
-// v1.5.61: [User-measured] Pixel-level spacing correction against a 50%-
-//          transparent overlay comparison with HA's native more-info
-//          dialog, aligned stage-by-stage (not cumulative - each value is
-//          the direct adjustment for that one transition, re-anchored from
-//          the previous element's already-aligned position). .readouts
-//          margin-top 8->6px (2px up), .readout-label margin-bottom
-//          2->4px (2px down), .circle-slider margin-top 22->25px (3px
-//          down), .mode-buttons margin-top 12->9px (3px up). Button gap
-//          decoupled from the shared var(--ha-space-3) HA token into its
-//          own var(--mode-buttons-gap, 26px) (12+14px) so the +14px
-//          widening doesn't affect anything else referencing that token.
-// v1.5.60: [User-directed] Recalibrated spacing after v1.5.59's flat
-//          restructure to reproduce v1.4.58's exact total gaps at every
-//          transition, traced contributor-by-contributor (old padding +
-//          margin layers from .hvac-content/.controls/.dial-container,
-//          which no longer exist, added back as single values on the
-//          elements that remain). ha-card gains
-//          padding: var(--ha-card-padding, 0 8px 16px 8px) - restores the
-//          horizontal inset .hvac-content used to provide (which the
-//          mode-buttons/circle-slider shrink calibration depends on) and
-//          the missing bottom frame gap (mode-buttons has margin-bottom:0
-//          by the new "owns its top-margin" convention, so it needs the
-//          card's own bottom padding to not sit flush against the border).
-//          .header's own left/right padding reduced 16px->8px to
-//          compensate for ha-card's new horizontal padding stacking with
-//          it (header used to live in ha-card's separate internal shadow
-//          DOM, unaffected by .hvac-content's padding - now a normal
-//          child, so it would double up unless reduced). .readouts
-//          margin-top 16->8px, .circle-slider margin-top 16->22px,
-//          .mode-buttons margin-top 16->12px. Verified against both
-//          header-present and headerless cases reproducing identical old
-//          totals.
-// v1.5.59: [User-directed] Full flat DOM restructure, matching
-//          chrono-slider-card's minimal pattern. .hvac-content and .controls
-//          wrapper divs removed entirely - .header, .readouts,
-//          .circle-slider (renamed from .dial-container, including the
-//          ResizeObserver's query target), and .mode-buttons are now all
-//          direct children of ha-card, which takes over the layout role
-//          directly (display:flex; flex-direction:column; align-items:
-//          center;) since dropping ha-card.header removes the internal
-//          shadow-DOM <h1> alignment conflict that originally required the
-//          wrapper. Header is now hand-rendered (<p class="header">)
-//          instead of using ha-card's built-in .header property, styled to
-//          replicate its original look (24px, left-aligned by default,
-//          same 12px 16px 16px padding) via var()s - not copying
-//          chrono-slider-card's own centered/20px .title style, which was
-//          a deliberately different visual target. Every element now owns
-//          its own margin-top (spacing from whatever precedes it) with a
-//          minimal/zero margin-bottom, so toggling elements on/off no
-//          longer leaves inconsistent gaps - replaces .controls'
-//          margin-top+margin-bottom pair and .readouts/.dial-container's
-//          margin-bottom-only pattern. Also removed entirely: the
-//          more-info button (markup, _handleMoreInfo(), .more-info CSS,
-//          show_more_info_button from DEFAULT_CONFIG and its editor
-//          toggle) - vestigial from both cards' more-info-dialog origins,
-//          no longer needed now that chrono-popup provides its own close/
-//          header chrome.
-// v1.4.58: [User-directed] Implemented the styles: config mechanism, ported
-//          directly from chrono-slider-card_1.8.80.js's verified
-//          implementation (cscToKebab/cscBuildUserStylesCss/adoptedStyleSheets
-//          pattern), renamed to this file's own ch- naming convention.
-//          config.styles ({ class_name: { property: value } }) is converted
-//          to real CSS text and adopted via renderRoot.adoptedStyleSheets,
-//          appended after Lit's own static-style sheets - adopted
-//          stylesheets win cascade ties against inline <style> tags and
-//          normal specificity regardless of DOM position (platform default
-//          styleOrder behavior), which is what lets a styles: override win
-//          against any property this card's own static styles already set,
-//          not just undeclared ones. Reserved 'host' key maps to :host.
-//          Rebuilt on every setConfig() call (not just once), so editor
-//          changes take effect live. No _stateStyleSheet equivalent -
-//          that part of chrono-slider-card is unrelated to styles: itself.
-// v1.4.57: [User-directed] Renamed .card-content -> .hvac-content. The old
-//          name specifically matched ha-card.ts's internal trigger for its
-//          automatic conditional padding (16px flat, or header-aware
-//          negative-margin compensation) - deliberately not replicating
-//          that logic here, since the whole point of the rename is to stop
-//          HA from injecting its own spacing at all. Added explicit
-//          padding: var(--hvac-content-padding, 8px) on all sides - flat,
-//          no header-conditional logic, fully ours, narrower than HA's old
-//          16px default. Considered merging this wrapper into ha-card
-//          itself (matching chrono-slider-card's flatter structure) but
-//          rejected: that would put display:flex/align-items:center
-//          directly on ha-card, which breaks left-alignment of ha-card's
-//          own internal header (<h1 class="card-header">, rendered via the
-//          .header property, living in ha-card's own separate shadow DOM)
-//          - an already-diagnosed, previously-fixed bug from earlier in
-//          this project. chrono-slider-card avoids this because it renders
-//          its own .title element instead of using ha-card.header at all;
-//          we deliberately use ha-card.header (documented decision from
-//          the original transfer doc), so the wrapper stays necessary.
-// v1.4.56: [User-directed] Editor's "Show card border" toggle now displays
-//          checked whenever show_border is true OR undefined (only unchecked
-//          when explicitly false) - c.show_border !== false instead of
-//          c.show_border. Purely a display default; the underlying config
-//          value is untouched until the user actually interacts with the
-//          toggle, preserving the v1.4.55 tri-state persistence behavior
-//          exactly. Deliberately dropped the real-DOM border-measurement
-//          approach discussed at length - untested in this session (never
-//          actually verified via a debug build), so not shipped on a
-//          gamble. No firstUpdated() changes, no measurement, no caching.
-// v1.4.55: [User-directed] Two config changes. (1) show_border: removed from
-//          DEFAULT_CONFIG, so a fresh card no longer gets it written into
-//          its yaml at all - the true/undefined/false distinction is now
-//          real: undefined (key absent) leaves ha-card fully untouched
-//          (native theme default border), only an explicit false applies
-//          the no-border class. Editor's toggle stays a plain two-state
-//          switch by design (confirmed) - touching it writes a literal
-//          value into the config; removing that value again requires
-//          editing yaml directly, which is the intended behavior. (2)
-//          Added static getStubConfig(hass), replacing the old parameterless
-//          version - scans hass.states for the first climate.* entity and
-//          pre-fills it as the default entity when a new card is added,
-//          per HA's real getStubConfig(hass, entities, entitiesFallback)
-//          convention (verified against hui-gauge-card.ts/hui-picture-
-//          glance-card.ts source), simplified since we only need a single
-//          domain match, not de-duplication against other dashboard cards.
-//          show_entity_name_fallback removal and additional editor toggles
-//          explicitly deferred by user request - not part of this change.
-// v1.4.54: [User-directed] Added default 8px top/bottom margin to .controls
-//          (previously 0/unset), as var(--controls-margin-top, 8px) and
-//          var(--controls-margin-bottom, 8px), matching the unprefixed
-//          naming convention from the previous step. .dial-container and
-//          .readouts' own existing margins untouched.
-// v1.4.53: [User-directed] Step 2 of styles: support - converted cosmetic/
-//          spacing/sizing literal values in static styles to
-//          var(--name, default), following chrono-slider-card's convention.
-//          Structural/functional properties (display, position, box-sizing,
-//          the dial-container::before aspect-ratio trick, scrollbar-hiding)
-//          intentionally left literal - not exposed as overridable, since
-//          doing so risks breaking layout mechanics. No prefixing on any
-//          variable name (explicit user decision - names stay simple,
-//          guessable, matching the class they belong to). One deliberate
-//          exception: ha-card's border-radius uses the real HA global token
-//          name var(--ha-card-border-radius, 12px) rather than a separate
-//          custom name, since <ha-card> is HA's real native component and
-//          already reads that exact variable internally (confirmed from
-//          ha-card.ts source) - this ties our default into HA's own live
-//          theming mechanism instead of a disconnected duplicate knob.
-//          New variables: --ha-card-border-radius, --warning-padding,
-//          --readouts-padding, --readouts-margin-bottom,
-//          --readout-label-opacity, --readout-label-letter-spacing,
-//          --readout-label-margin-bottom, --dial-container-margin-bottom,
-//          --dial-padding, --mode-buttons-max-width, --mode-button-min-width,
-//          --mode-button-max-width (the last two shared between the grid
-//          track's minmax() and the item's clamp(), deliberately, so they
-//          can't drift out of sync if only one is overridden).
-// v1.4.52: [User-directed] Step 1 of styles: support - DOM structure and
-//          classname pass only, no visual/behavioral change. Mirrors
-//          chrono-slider-card's shared+unique classname convention
-//          (e.g. control-button/control-button-open there ->
-//          mode-button/mode-button-mode here). Renamed .container ->
-//          .dial-container (avoids the collision with HA's own native
-//          .container inside hui-sections-view, discovered this session)
-//          and .current -> .readouts. Added classes that were previously
-//          entirely absent: ha-card itself, the two readout wrapper divs
-//          (readout/readout-temperature, readout/readout-humidity), their
-//          label/value <p> tags, the dial element, each of the four mode/
-//          preset/fan/swing buttons (mode-button/mode-button-<type>), and
-//          each button's icon (mode-button-icon/mode-button-icon-<type>).
-//          .card-content intentionally kept, unlike slider-card which has
-//          no equivalent wrapper - it's required for ha-card.ts's own
-//          automatic conditional padding mechanism (documented earlier
-//          this project), which slider-card doesn't rely on. All CSS
-//          selectors updated to match; no property values changed. var()
-//          conversion is a separate, later step.
-// v1.3.51: [User-directed, spec-verified] Fixed v1.3.50's justify-self:center
-//          making each button size to its own icon+label content instead of
-//          its track (measured: 82/87/106/120px, all below the 112px floor,
-//          all different per label length). Confirmed via CSS Working Group
-//          thread (fantasai/Palmgren): the fit-content(track-size) override
-//          triggered by non-stretch justify-self is explicitly conditioned
-//          on the item's width being 'auto'. Changed .mode-buttons > *'s
-//          width from auto (via unset width + min/max-width) to an explicit
-//          width: clamp(112px, 100%, 140px) - not 'auto', so the fit-content
-//          override doesn't apply; the 100% still ties it to the real,
-//          continuously-shrinking track width, floored/ceilinged by the
-//          clamp(), and justify-self:center can now center the resulting
-//          non-ambiguous box normally.
-// v1.3.50: [User-directed, spec-verified] Fixed v1.3.49's grid not actually
-//          shrinking. Root cause, confirmed via CSS Working Group discussion:
-//          repeat(auto-fit, minmax(min,max)) decides column COUNT using the
-//          max argument only when that max is a definite length - with
-//          minmax(112px, 140px) (both definite), the count was decided using
-//          140px, identical to the old fixed-width behavior, so the 112px
-//          floor never actually applied. Fixed by changing the max argument
-//          to 1fr: minmax(112px, 1fr) - fr is explicitly not "definite" for
-//          this purpose (confirmed: "the fr value is ignored for repetition
-//          purposes"), so column count now uses the 112px min instead,
-//          giving genuine continuous shrink 140->112 before a column drops.
-//          Since 1fr would otherwise let a lone item stretch to fill an
-//          entire wide row, .mode-buttons > * now caps itself at
-//          max-width:140px with justify-self:center, capping visual growth
-//          while the track itself can still be wider.
-// v1.3.49: [User-directed] Replaced all per-item-count CSS (items-4,
-//          items-3, multiline) with a single universal rule that applies
-//          identically regardless of how many buttons are present (1, 2,
-//          3, 4, or more). .mode-buttons now uses
-//          grid-template-columns: repeat(auto-fit, minmax(112px, 140px))
-//          with max-width:320px (matches the dial's real measured width
-//          at 1920x1080, up from the old 300px). auto-fit/minmax
-//          continuously shrinks buttons from 140px down to 112px before
-//          dropping a column, and Grid's default auto-placement wraps any
-//          excess items onto new rows automatically - no per-count
-//          selectors needed. With a 320px cap, 3 buttons at minimum width
-//          (360px) can never fit on one line, so columns are capped at 2
-//          purely by that arithmetic: 4 buttons -> 2x2, 3 -> 2+1,
-//          5 -> 2+2+1, 6 -> 2+2+2, etc. Removed modeButtonsClass (the old
-//          items-${length}/multiline string) - .mode-buttons is now a
-//          plain, unparameterized class.
-// v1.3.48: [User-measured] Made the 4-button case's width continuously
-//          shrinkable instead of a fixed 140px. .mode-buttons.multiline > *
-//          now uses flex:1 1 140px with min-width:112px, max-width:140px
-//          (overrides the shared .mode-buttons > * min-width:120px for this
-//          case only, via 2-class specificity). Buttons shrink together as
-//          available width drops below the 292px needed for two 140px
-//          buttons + gap, floor at 112px (matches the 244px budget measured
-//          inside chrono-popup at a 360px viewport). Below the 236px needed
-//          for two 112px buttons, flex-wrap forces a single column, where
-//          the lone button grows back to its 140px max-width. 2-item/
-//          3-item cases untouched.
-// v1.3.47: [User-measured] Removed .mode-buttons' padding:0 12px 0 12px.
-//          User's DevTools measurement confirmed .mode-buttons box was
-//          300px wide (items-4 max-width) with 12px horizontal padding on
-//          a border-box element, leaving only 276px content width - 16px
-//          short of the 292px needed for 2x140px buttons + 12px gap,
-//          causing the 1-column collapse. .card-content's own automatic
-//          16px/side padding (from ha-card.ts) still keeps the row off
-//          the card edges without this element's own padding.
-// v1.3.46: Restructured the mode/fan/swing button row to follow the same
-//          pattern chrono-slider-card uses for its .favorites section:
-//          the wrapping row is now a direct child of a column-flex parent
-//          (.controls) instead of being nested inside its own row-flex
-//          wrapper (.ch-controls-container). That nested-row-in-row
-//          structure was the actual cause of the v1.3.45 min-width:auto
-//          issue reappearing as a 4-buttons-in-1-column bug - as a cross-
-//          axis child of a column flex parent, the row is no longer subject
-//          to the flexbox auto-minimum-size special case at all, verified
-//          against chrono-slider-card_1.8.80.js's own working .favorites
-//          implementation (ha-card > section.favorites, same relationship).
-//          Also renamed ch-controls-container/ch-controls-scroll (merged
-//          into one element) to .mode-buttons for a more intuitive name,
-//          matching .favorites' naming style. items-4/items-3/multiline
-//          column-forcing logic and all pixel values otherwise unchanged.
-// v1.3.45: Fixed mode/fan/swing buttons becoming unreachable on mobile.
-//          Root cause: .ch-controls-scroll (the button row) is a flex item
-//          of a row flex container (.ch-controls-container) and had no
-//          min-width override, so it kept the flexbox default min-width:auto
-//          and refused to shrink below its content's width - meaning its own
-//          overflow:auto never engaged and the excess was clipped by
-//          .card-content's overflow:hidden instead of being reachable.
-//          Fixed by adding min-width:0. Also removed the
-//          @media (hover:hover), (min-width:600px) and (min-height:501px)
-//          gate around the flex-wrap:wrap rules so wrapping applies
-//          universally instead of only on hover-capable/wide viewports -
-//          narrow touch devices now wrap the row instead of relying on
-//          horizontal scroll.
-// v1.2.44: [Rule: zero negative margins, forbidden going forward] Removed
-//          .card-content's margin-top:-12px (added v1.2.37 as a workaround
-//          for ha-card's unreachable internal header padding). Compensated
-//          by reducing .current's own padding-top 20px->8px, keeping the
-//          same net 24px gap when a header exists (16px header padding + 8px
-//          = 24px, same as before: 16 + (-12) + 20 = 24), built entirely
-//          from positive spacing. Root cause of the no-name/no-header
-//          collapse bug: the flat -12px was applied unconditionally, but
-//          ha-card.ts's own CSS treats header-present vs header-absent
-//          .card-content differently (confirmed from source) - so the same
-//          -12px landed on two different baselines and only produced a
-//          correct result in the header-present case. .current's padding-top
-//          doesn't depend on that conditional, so both cases should now be
-//          consistent. [Not yet re-measured on the no-header entity -
-//          reasoning-based, pending verification.]
+// v1.5.64: Fixed .circle-slider stretching to fill leftover vertical
+//          space in taller containers - removed leftover flex:1.
+// v1.5.63: [User-tuned] Mode-buttons row spacing (max-width/margin/padding)
+//          via negative-margin bleed technique, mirroring HA's own row.
+// v1.5.62: [User-measured] Fixed button-gap bug: lowered mode-buttons
+//          max-width 320->294px so clamp() cap matches track width
+//          instead of absorbing gap changes as invisible overhang.
+// v1.5.61: [User-measured] Pixel-level spacing correction of readouts/
+//          circle-slider/mode-buttons margins vs. HA's native dialog.
+// v1.5.60: [User-directed] Recalibrated spacing after v1.5.59 restructure
+//          to reproduce v1.4.58's exact gaps; added ha-card padding.
+// v1.5.59: [User-directed] Flattened DOM: removed .hvac-content/.controls
+//          wrappers, header/readouts/circle-slider/mode-buttons now
+//          direct children of ha-card, each owning its own margin-top.
+// v1.4.58: [User-directed] Implemented styles: config mechanism (ported
+//          from chrono-slider-card) via adoptedStyleSheets.
+// v1.4.57: [User-directed] Renamed .card-content -> .hvac-content to stop
+//          HA's automatic padding injection; added explicit flat padding.
+// v1.4.56: [User-directed] Editor's "Show card border" toggle now shows
+//          checked when show_border is true OR undefined, not just true.
+// v1.4.55: [User-directed] show_border removed from DEFAULT_CONFIG
+//          (true/undefined/false now meaningful); added getStubConfig(hass).
+// v1.4.54: [User-directed] Added default 8px top/bottom margin to .controls.
+// v1.4.53: [User-directed] Converted cosmetic/spacing/sizing CSS values to
+//          var(--name, default) (styles: support, step 2).
+// v1.4.52: [User-directed] DOM/classname pass for styles: support (step 1)
+//          - renamed .container->.dial-container, .current->.readouts.
+// v1.3.51: [User-directed] Fixed mode-buttons sizing to track instead of
+//          content: explicit width:clamp(112px,100%,140px).
+// v1.3.50: [User-directed] Fixed mode-buttons grid not shrinking:
+//          minmax(112px,140px)->minmax(112px,1fr) so columns actually shrink.
+// v1.3.49: [User-directed] Replaced per-item-count CSS with one universal
+//          rule: repeat(auto-fit, minmax(112px,140px)), max-width:320px.
+// v1.3.48: [User-measured] Made 4-button case shrinkable: flex:1 1 140px,
+//          min-width:112px, max-width:140px.
+// v1.3.47: [User-measured] Removed .mode-buttons' own padding - was
+//          stacking with ha-card's automatic padding, causing 1-col collapse.
+// v1.3.46: Restructured mode-buttons row as direct child of column-flex
+//          .controls (was nested row-in-row, causing a flexbox collapse bug).
+// v1.3.45: Fixed mode/fan/swing buttons unreachable on mobile: added
+//          min-width:0 to button row, removed flex-wrap media-query gate.
+// v1.2.44: Removed .card-content's negative-margin workaround (rule: no
+//          negative margins going forward); compensated via padding-top.
 // v1.2.43: Added show_border config option (default true) with editor toggle.
-//          ha-card's border comes from ha-card.ts's own default CSS
-//          (border-width: var(--ha-card-border-width, 1px), confirmed from
-//          source) - when off, a .no-border class sets border-width:0 on our
-//          own <ha-card> element, overriding it directly rather than via any
-//          theme variable. [Self-caught during this edit: an earlier
-//          str_replace briefly dropped DEFAULT_CONFIG's closing brace and
-//          the Helpers section comment header - caught and fixed before
-//          delivery, verified via node -c and diff below.]
-// v1.2.42: [User-measured] .current (readout block): padding-top 12px->20px,
-//          margin-bottom 26px->18px (net 38px unchanged). Shifts the block
-//          down 8px from its own top spacing, not the title's, keeping the
-//          arc and everything below in the same position.
-// v1.2.41: [User-measured] Removed .ch-controls-container's own
-//          padding-bottom:12px + margin-bottom:4px (16px combined) - was
-//          stacking on top of ha-card.ts's automatic padding:var(--ha-space-4)
-//          (16px) on .card-content since the v1.2.38 rename, doubling the
-//          bottom gap. User confirmed this was the only misaligned block;
-//          everything else already correct.
-// v1.2.40: Removed height:100% from .card-content. Was circular now that
-//          getGridOptions() no longer forces a fixed pixel height on ha-card
-//          (v1.2.39): a child asking for 100% of a parent whose own height
-//          is determined by that same child has no definite value to
-//          resolve against, so the browser let .card-content overshoot
-//          ha-card's real box - confirmed by measurement: ha-card bottom
-//          edge at 718.8, .ch-controls-container (mode buttons) bottom edge
-//          at 761.8, a 43px overflow past the card's own border. Content
-//          (title/readouts/arc/buttons) now correctly determines the card's
-//          height, with nothing fighting against it.
-// v1.2.39: Deleted getGridOptions() entirely. Per explicit project rule: the
-//          card must contain zero code that knows about or adapts to any
-//          specific container/layout system (sections, masonry, panel, etc).
-//          hui-thermostat-card.ts defines getGridOptions() because HA wrote
-//          it and made that choice for their own card; we are not doing the
-//          same. Card content (title/readouts/arc/buttons) now determines
-//          the card's natural height/width entirely on its own; per-instance
-//          resizing remains available to the user via the dashboard's own UI
-//          (e.g. sections view's Layout tab), same as any card without this
-//          method. This also resolves the edit-mode clipping bug from
-//          earlier (card rendering 622px inside a fixed 312px grid cell),
-//          since the card no longer requests a fixed row height at all.
-// v1.2.38: Four changes: 1) ha-card: added height:100%/width:100%, matching
-//          hui-thermostat-card.ts source - fixes edit-mode overflow bug
-//          (verified: ha-card was rendering 622px inside a 312px grid cell).
-//          2) .content renamed to .card-content, matching ha-card.ts's own
-//          ::slotted(.card-content) selector (real automatic padding from
-//          ha-card itself, previously missing since "content" didn't match).
-//          3) Readouts markup/CSS rewritten from .readouts/.readout to
-//          .current/<p class="label">/<p class="value">, matching more-info-
-//          climate.ts's real .current class and markup exactly (existing
-//          user-tuned margin-bottom:26px preserved, not reverted to source's
-//          var(--ha-space-10)). 4) .container and .ch-controls-container now
-//          wrapped in a shared .controls div (flex:1, column), matching the
-//          reference DOM's grouping - existing margin-bottom values on
-//          .container/.ch-controls-container preserved as-is internally.
-//          [Disclosed] spacing may need re-tuning after this pass, since
-//          .card-content's newly-real automatic padding stacks with existing
-//          manual margins that were tuned against the old (padding-less)
-//          .content div.
-// v1.2.37: 1) .readouts padding-top 0->12px. 2) [Workaround, disclosed] title's
-//          padding-bottom cannot be reduced directly - it's inside ha-card's own
-//          shadow DOM with no exposed hook - so .content gets margin-top:-12px
-//          instead, same visual result via a different mechanism. 3) Fixed
-//          v1.2.33 regression: .more-info was nested inside .content (anchoring
-//          position:absolute to .content's top, next to readouts, not the
-//          title) - moved back to a direct child of ha-card, and re-added
-//          position:relative to ha-card (was moved to .content only in v1.2.33,
-//          leaving ha-card without a positioning context).
-// v1.2.36: [Disclosed, not source-verified] User-measured: .container margin-
-//          bottom 14px->16px (+2px), .ch-controls-container margin-bottom
-//          6px->4px (-2px). Net-zero swap: shifts controls block down 2px
-//          without moving readouts/dial or total card height.
-// v1.2.35: [Disclosed, not source-verified] User-measured manual spacing
-//          adjustment, not derived from native source: .readouts margin-bottom
-//          40px->26px (-14px), .container margin-bottom 0->14px (+14px),
-//          .ch-controls-container margin-bottom 0->6px (+6px). Moves the dial
-//          block up 14px without moving readouts or controls positions.
-// v1.2.34: Add margin-bottom: var(--ha-space-10) to .readouts, matching
-//          more-info-climate.ts's .current class exactly (was missing).
-//          Fixes tight current-temp-to-arc spacing.
-// v1.2.33: Fix title alignment: ha-card is plain block again (matching v1.1.23),
-//          flex/align-items:center layout moved to new .content wrapper div.
-//          ha-card.header's internal h1 was being centered/shrunk by
-//          align-items:center previously on ha-card itself.
-// v1.2.32: Restored title to ha-card's own built-in .header property, matching
-//          v1.1.23 (the last version confirmed correct) and verified against
-//          real ha-card.ts source: ha-card renders <h1 class="card-header">
-//          internally (24px, padding 12px/16px/16px) when .header is set -
-//          this is what the custom:more-info-card reference actually uses,
-//          confirmed via user-provided DevTools inspection (h1.card-header,
-//          24px, 12px 16px 16px - exact match to ha-card.ts's own CSS).
-//          Removes the <p class="title"> markup (wrong element, introduced
-//          between v1.1.23 and v1.2.24) and its now-dead .title CSS rule.
-//          Nothing else changed: ha-card's padding:0/layout untouched,
-//          .more-info still a direct child of ha-card as before.
-// v1.2.31: Fixed v1.2.30's ResizeObserver to literally match hui-thermostat-
-// v1.2.31: Fixed v1.2.30's ResizeObserver to literally match hui-thermostat-
-//          card.ts's ResizeController, verified against source: (1) now
-//          observes the host card element itself (`this`), not .container
-//          directly, matching source's `new ResizeController(this, {...})`;
-//          (2) the callback no longer trusts the ResizeObserver entry's own
-//          contentRect - it re-queries .container fresh from the shadow root
-//          on every callback and reads its live clientHeight, matching
-//          source's `entries[0]?.target.shadowRoot?.querySelector(".container")
-//          ?.clientHeight` exactly; (3) removed the `if (height)` guard -
-//          value is now assigned unconditionally every callback, matching
-//          source (source has no guard). Root cause of v1.2.30's tiny-dial/
-//          missing-buttons bug: observing .container directly meant a
-//          transient early measurement (before the child custom element
-//          upgraded) could lock in permanently, since .container's own box
-//          height is set by flex:1 within a fixed-height ha-card and never
-//          resizes again on its own to trigger a correcting callback.
-//          disconnectedCallback() and all CSS unchanged - already correct.
-// v1.2.30: Restored the max-width capping behavior removed in v1.2.29, using
-//          the browser's native, built-in ResizeObserver instead of the
-//          CORS-blocked @lit-labs/observers package - zero import, zero CDN
-//          dependency, same measurement/result as source's ResizeController
-//          (measures .container's rendered height, applied as max-width on the
-//          dial). Set up once in firstUpdated() (observing .container),
-//          disconnected in disconnectedCallback(). New _containerHeight
-//          reactive property holds the measured value.
-// v1.2.29: Fix v1.2.27/28's fatal load failure - confirmed via console output
-//          that unpkg.com does not serve @lit-labs/observers with the CORS
-//          headers browsers require, so the import threw and the whole card
-//          module failed to register (showing as HA's generic "Configuration
-//          error"). Removed the import, the _resizeController setup, and the
-//          now-unused max-width style binding on
-//          <ha-state-control-climate-temperature>. .container's CSS is
-//          unchanged and remains fully correct on its own (confirmed working
-//          since v1.2.26). [Disclosed, accepted] without this refinement, an
-//          unusually short-but-wide card could let the dial slightly overflow
-//          .container's overflow:hidden - user-confirmed native has this exact
-//          same behavior in that scenario, so this is not a new gap versus
-//          native, just an un-fixed one native doesn't fully solve either.
-// v1.2.28: FUNDAMENTAL ARCHITECTURE CHANGE for block 3 (the arc, +/- buttons,
-//          and center temperature). Every previous version of this block was a
-//          from-scratch reimplementation of native's geometry, color, drag,
-//          keyboard, and touch logic - each attempt introduced its own subtle
-//          divergence from source, several of which caused real regressions
-//          tonight. Replaced entirely: block 3 now renders the REAL
-//          <ha-state-control-climate-temperature> custom element directly
-//          (already globally registered in any real HA frontend, same way this
-//          file already uses ha-control-select-menu/ha-big-number/
-//          ha-outlined-icon-button/ha-icon-button directly elsewhere), exactly
-//          as hui-thermostat-card.ts does: style=max-width (from our own
-//          ResizeController measuring .container), prevent-interaction-on-scroll,
-//          show-secondary, .stateObj=${stateObj}. This guarantees block 3 is
-//          byte-for-byte identical to native by construction - there is no
-//          geometry, color, drag, keyboard, or responsive-breakpoint logic left
-//          for us to get wrong, because we no longer implement any of it.
-//          Removed entirely (all now dead code, superseded by the real
-//          element): CH_ARC_* constants, CH_SLIDER_MODES, CH_HVAC_ACTION_TO_MODE,
-//          chSvgArc, chClamp, chValueToPercentage, chStrokeDashArc,
-//          chStrokeCircleDashArc, chComputeCssVariable, chSlugify,
-//          chDomainColorProperties, chStateActive, chStateColorCss, chGetStep,
-//          chDebounce, _effectiveSingle/Low/High, _commitStepOverride, _step,
-//          _percentageFromPointer, _findActiveHandle, _onPointerDown/Move/Up,
-//          _handleKeyDown/Up, _renderArcGroup, _renderDial, _renderCenter,
-//          _renderStepButtons, and every CSS rule for .dial-wrapper/.dial-svg/
-//          .ch-arc*/.ch-target*/.ch-info/.ch-label*/.ch-dual/.step-buttons*/the
-//          responsive @container breakpoints - all of it was reimplementing
-//          behavior the real component already provides internally.
-//          .container's CSS is unchanged (still hui-thermostat-card.ts's exact
-//          model, verified working as of v1.2.26/27) and now correctly has a
-//          single real child again, matching source's ".container > *" exactly.
-//          Blocks 1 (title/more-info), 2 (readouts), and 4 (mode/preset/fan/
-//          swing rows) are untouched.
-// v1.2.27: Ported the ResizeController mechanism itself, literally - not a
-//          substitute. Imports the same @lit-labs/observers package source
-//          uses (pinned to a lit-2-compatible version via unpkg, consistent
-//          with how lit itself is imported in this file). Constructor sets up
-//          the controller with the exact same callback as source: measures
-//          .container's own rendered clientHeight on resize. render() applies
-//          that value as max-width directly on .dial-wrapper, matching
-//          source's styleMap({maxWidth: controlMaxWidth}) exactly (implemented
-//          as a plain inline style string here since styleMap wasn't already
-//          imported - same resulting DOM attribute, different Lit directive
-//          used to write it). This caps the dial's width to whatever height
-//          .container actually has available, fixing the clipping seen on
-//          wide-but-short cards where the fixed 320px default overflowed
-//          .container's overflow:hidden.
-// v1.2.26: Fix v1.2.25's collapse - re-fetched hui-thermostat-card.ts (this time
-//          the actual file, uploaded directly, not a possibly-corrupted page
-//          render) and found the real structure: native uses TWO separate
-//          nested elements, not one. .container (outer: flex, align/justify
-//          center, the ::before padding-top:100% trick, flex:1) is one thing.
-//          <ha-state-control-climate-temperature> - a SEPARATE element placed
-//          inside it, with its own :host{width:320px} default (verified from
-//          state-control-circular-slider-style.ts, already on disk) - is a
-//          second thing. Split accordingly: .container now matches source
-//          byte-for-byte; .dial-wrapper (containing our svg/center-info/step-
-//          buttons) is now the inner element with the real component's own
-//          320px default width + aspect-ratio:1 + max-width:100%, and is
-//          .container's single real child, so ".container > .dial-wrapper"
-//          padding:8px now matches source's ".container > *" exactly (no
-//          longer a 3-vs-1-child mismatch like the previous attempt).
-//          [Disclosed, still not ported] native additionally uses a JS
-//          ResizeController measuring .container's own rendered height to cap
-//          the control's max-width further, for wide-but-short cards. Without
-//          it, an unusually short-but-wide card could let the dial grow up to
-//          320px and get clipped by .container's overflow:hidden rather than
-//          shrinking gracefully - a real, narrower edge case than what broke
-//          in v1.2.24/25, not the core sizing bug.
-// v1.2.25: Fix regression from v1.2.24 - .dial-wrapper's sizing was NOT actually
-//          the same technique as source despite claiming so. v1.2.24 used
-//          aspect-ratio:1 + flex:1, which requires height:100% to resolve up the
-//          full ancestor chain (only true inside HA's real grid dashboard); when
-//          it doesn't resolve, flex:1 has no height to distribute and collapses
-//          toward zero. Replaced with the literal, unmodified technique from
-//          hui-thermostat-card.ts's .container: flex row + justify-content/
-//          align-items:center + an empty ::before with padding-top:100%
-//          (percentage padding is calculated from WIDTH, not height - fully
-//          self-contained, works whether or not ha-card's height:100% resolves
-//          to anything meaningful). [Disclosed, minor structural difference]
-//          source's .container has one real child (padding:8px applied via
-//          ".container > *"); our .dial-wrapper has three (the svg plus two
-//          absolutely-positioned overlays for center-info and step-buttons) -
-//          the 8px padding is scoped to just the svg specifically, since the
-//          absolutely-positioned overlays already position themselves precisely
-//          via inset/bottom offsets and don't need it.
-// v1.2.24: Major structural rework distinguishing dashboard-card infrastructure
-//          (sourced from hui-thermostat-card.ts, re-fetched fresh - title,
-//          container/sizing model, getGridOptions, touch-only dot interaction,
-//          real ha-icon-button) from dialog-content styling (sourced from
-//          more-info-climate.ts and the shared dial components - responsive
-//          breakpoints, label sizing, action-color glow):
-//          1) Title reverted to a literal <p class="title"> matching
-//          hui-thermostat-card.ts exactly, replacing the ha-card.header
-//          approach - the earlier DevTools h1.card-header finding was measuring
-//          the more-info DIALOG's own title bar chrome, not applicable to a card.
-//          2) Removed the .content wrapper entirely; ha-card's direct children
-//          are now .title, .more-info, .readouts, .dial-wrapper, and the
-//          controls container - matching native's flatter structure. Dial sizing
-//          now uses flex:1 + aspect-ratio:1 on .dial-wrapper directly (modern
-//          CSS equivalent of source's flex:1 + padding-top:100% hack).
-//          3) Added getGridOptions() matching source (columns:12, rows:5,
-//          min_rows:2, min_columns:6) for HA's sections-type dashboards.
-//          4) Touch-only dot interaction: full ring draggable normally: on
-//          coarse/touch pointers (@media (pointer:coarse), standing in for
-//          source's JS isTouch check), only a small dot-sized hit circle at the
-//          target position is interactive, matching source's
-//          prevent-interaction-on-scroll intent (avoids fighting page-scroll
-//          swipes on mobile dashboards).
-//          5) More-info button is now the real <ha-icon-button> component
-//          (verified source: accepts a slotted <ha-icon> when .path isn't set),
-//          replacing the earlier plain div+ha-icon substitute.
-//          6) Responsive breakpoints ported from state-control-circular-slider-
-//          style.ts via CSS container queries on .dial-wrapper at the verified
-//          130/190/250px thresholds - step buttons hide below 250px, label
-//          hides below 130px, ha-big-number/.ch-label font sizes step down.
-//          [Approximation, disclosed] source's ".state" breakpoint selector
-//          role wasn't independently confirmed; mapped to .ch-label as the
-//          closest equivalent in our structure.
-//          7) .ch-label now matches source's real sizing: width:60%,
-//          -webkit-line-clamp:2, min-height:1.5em, white-space:nowrap,
-//          color:var(--action-color, inherit) (was color:inherit only).
-//          8) Added the real actionColor computation (action && action!=='idle'
-//          && action!=='off' && active, mapped via CLIMATE_HVAC_ACTION_TO_MODE,
-//          verified from climate.ts already on disk) as --action-color, plus
-//          the radial-gradient glow effect on the dial matching source exactly.
-// v1.1.23: Second full source-comparison review pass, two findings fixed:
-//          1) Off-state arc hiding: verified from source
-//          (ha-control-circular-slider.ts: ".inactive .arc{opacity:0}", applied
-//          only in the interactive single/dual branches via .inactive=${!active}
-//          in ha-state-control-climate-temperature.ts - NOT in the readonly
-//          unavailable branch, which already renders correctly since v1.1.21).
-//          When a climate entity is genuinely off (not unavailable), the arc
-//          fill (clear/colored/active layers) is now fully hidden, leaving only
-//          the plain background ring and the white target dot - previously we
-//          still rendered a second grey ring on top of the background.
-//          2) Full keyboard accessibility: ported _handleKeyDown/_handleKeyUp
-//          from source - ArrowUp/Right (+step), ArrowDown/Left (-step),
-//          PageUp/PageDown (+/- max(step, (max-min)/10)), Home/End (min/max).
-//          Keydown updates visually (reuses the same drag-override state as
-//          pointer dragging), keyup commits immediately via the same
-//          _onPointerUp path used for drag release - matches source's
-//          changing-during/changed-on-release pattern exactly. Added
-//          role="slider" + full ARIA attributes + tabindex to the interaction
-//          path. [Disclosed adaptation] native has two independently-focusable
-//          slider elements in dual mode (one per low/high); we use one shared
-//          focusable control acting on whichever target is currently selected
-//          (_selectedRangeTarget) - same target the step buttons already act
-//          on, rather than building two separate focusable DOM elements.
-//          Focus-visible outline is also our own addition (a visible stroke
-//          outline), since native's focus style applies to a visible colored
-//          arc element, while our interaction path is invisible by design.
-// v1.1.22: Readouts block moved up 8px without moving the dial or anything below
-//          it. Implemented by reducing .content's top padding (16px -> 8px,
-//          i.e. shrinking the space contributed by the block above, not a
-//          negative margin on the readouts block itself), then adding
-//          margin-top:8px to .dial-wrapper to restore its original position -
-//          net effect: readouts moves up 8px, gap between readouts and the dial
-//          grows by 8px, dial and everything below unchanged.
-// v1.1.21: Unavailable-state handling now a verified port, not an invention -
-//          read further into ha-state-control-climate-temperature.ts than
-//          before and found the real fallback branch. Dial now forces the
-//          plain readonly 'full' ring (no target dot, no low/high split)
-//          regardless of whether the entity is normally single/range mode,
-//          matching source exactly. The grey look comes for free from
-//          chStateColorCss already resolving to var(--state-unavailable-color)
-//          for the unavailable state - no separate dimming needed. Also added
-//          .disabled=${state==='unavailable'} to the Mode/Preset/Fan/Swing
-//          ha-control-select-menu rows, matching
-//          hui-mode-select-card-feature-base.ts's own .disabled binding, which
-//          we had never ported.
-// v1.1.20: chStateActive() rewritten as a verified port of state_active.ts,
-//          scoped to the climate domain specifically (this card never handles
-//          any other domain, so the timestamp-domain and per-domain-switch
-//          branches that only apply elsewhere are omitted). For climate, the
-//          real logic reduces to exactly: active = state is not off/unavailable/
-//          unknown - confirming the previous heuristic was already correct, now
-//          traceable to real source instead of an assumption.
-// v1.1.19: Full source-comparison review and fix pass against
-//          ha-state-control-climate-temperature.ts (previously only its render
-//          output had been ported, not all of its interaction/logic branches):
-//          1) Dual-mode (heat_cool) low/high colors now active-aware — 'heat'/
-//             'cool' only when active, 'off'/'off' when inactive (was always
-//             heat/cool regardless of active state).
-//          2) Single-mode slider now replicates the heatCoolModes.length===1
-//             special case: if the entity supports exactly one of heat/cool/
-//             heat_cool and current mode is off/auto, the slider still uses that
-//             one mode's style instead of falling back to 'full'.
-//          3) Step size now falls back to hass.config.unit_system.temperature
-//             ('°F' -> 1, else 0.5) instead of a hardcoded 0.5, matching source.
-//          4) Step-button service calls are now debounced 1000ms (matching
-//             source's _debouncedCallService), instead of firing immediately on
-//             every click. Drag-release calls remain immediate (matches source's
-//             _valueChanged vs _handleButton distinction).
-//          5) Dual-mode step buttons now get a colored outline
-//             (--md-sys-color-outline) matching the selected target's color when
-//             active, matching source's _renderTemperatureButtons(target, colored).
-//          6) Added UNAVAILABLE state handling: dedicated disabled label, dial
-//             non-interactive. [Disclosed] native's exact fallback markup for
-//             this branch wasn't in the retrieved source; this is a reasonable
-//             equivalent, not a verified pixel-identical port.
-//          7) Center label/number now gated on actual temperature-support
-//             presence instead of always attempting to render.
-//          8) Added tap-to-select on the low/high numbers in dual mode
-//             (previously only settable by dragging); _selectedRangeTarget moved
-//             into static properties so it's properly reactive.
-//          9) _step() per-side fallback now uses ?? min / ?? max per side,
-//             matching source's defaultValue behavior, instead of no fallback.
-//          Plus: console banner recolored to white/blue/white
-//          (background #101010, "HVAC" in #4676d3, rest white) per explicit
-//          instruction, replacing the earlier orange/dark scheme.
-// v1.0.18: Structural fix for the +/- buttons triggering a spurious arc drag
-//          (Rule 6 - fixed the cause, not the symptom). Verified from source
-//          (ha-control-circular-slider.ts): native attaches drag interaction ONLY
-//          to a dedicated invisible <path> tracing the ring geometry
-//          (stroke:transparent, pointer-events:auto, stroke-width = visible 24px +
-//          2x12px margin = 48px), with the whole <svg> set to pointer-events:none.
-//          It is never attached to a generic wrapper div. Replicated exactly:
-//          pointerdown listener moved off .dial-wrapper entirely, onto a new
-//          .ch-interaction path inside the SVG with the same 48px hit-band.
-//          Since the event now originates on the path (whose bounding box is the
-//          arc shape, not a centered square), _onPointerDown now reads
-//          .dial-wrapper's rect via renderRoot.querySelector instead of
-//          ev.currentTarget, keeping center-of-dial math correct. Buttons live
-//          outside the <svg> as siblings, so pointerdown events starting on them
-//          can never reach this listener at all, by construction - not by
-//          stopPropagation.
-// v1.0.17: Change show_more_info_button default from true to false.
-// v1.0.16: Fix real-time updates — the hass setter never called requestUpdate(),
-//          so Lit never re-rendered on incoming HA state pushes (hass is
-//          deliberately kept out of static properties to avoid deep-checking the
-//          whole hass object, but the setter must manually trigger an update).
-//          The card previously only re-rendered when the user interacted with it
-//          directly (drag/click touching the reactive _dragTarget/_dragTemp
-//          properties), never from external state changes.
-// v1.0.15: Card border-radius 28px -> 12px (user correction). Dial center label+
-//          temperature block (.ch-info) moved up 16px via transform. Feature
-//          button row (.ch-controls-container) moved down 8px via margin-top.
-//          Target dot fixed: ch-target-border now gets the arc's color (matching
-//          native's cascade, where .value/.low/.high override the base white on
-//          .target-border, leaving only the inner .target circle pure white) —
-//          previously both layers were flat white with no color, unlike native's
-//          colored-ring + white-center look.
-//          Border-radius/shift values are user-measured corrections against the
-//          native card, not re-derived from source.
-// v0.0.14: Fix title font entirely — DevTools inspection (h1.card-header, 24px)
-//          revealed the real name text is NOT hui-thermostat-card.ts's own
-//          <p class="title">, it's ha-card's own built-in `header` property
-//          (renders <h1 class="card-header">, font-size var(--ha-font-size-2xl)
-//          default, verified from ha-card.ts source). Now using .header=${name}
-//          directly on <ha-card> — guaranteed identical since it's the literal
-//          same generated element, not a re-implementation.
-//          ha-card padding changed 16px->0 (verified: hui-thermostat-card.ts's own
-//          ha-card uses padding:0, since the internal header supplies its own
-//          padding); added a .content wrapper div carrying the 16px
-//          padding/16px gap that used to live on ha-card itself.
-//          .more-info rebuilt as a direct child of ha-card (required for its
-//          position:absolute to anchor to ha-card's own position:relative, which
-//          only works for elements that land in ha-card's actual box, not nested
-//          inside our own wrapper divs) using the exact verified positioning CSS
-//          (position/top/right/inset-inline-*/border-radius/color/direction).
-//          [Disclosed, not verified] display:flex/align-items/padding:8px on
-//          .more-info are my own addition for clickable sizing, since native
-//          wraps a real <ha-icon-button> component (own internal sizing we don't
-//          have source for) while ours is a plain div+ha-icon.
-// v0.0.13: Fix .title font properties to match hui-thermostat-card.ts exactly:
-//          font-size var(--ha-font-size-l), line-height var(--ha-line-height-expanded),
-//          removed unverified font-weight:500 override (source has none, inherits
-//          normal weight). Fix .readout-label/.readout-value to match
-//          more-info-climate.ts's .current .label/.current .value exactly:
-//          label now opacity:0.8, font-size var(--ha-font-size-m), line-height
-//          var(--ha-line-height-condensed), letter-spacing 0.4px, color
-//          var(--primary-text-color) (was hardcoded secondary-text-color/12px);
-//          value now font-size var(--ha-font-size-xl), font-weight
-//          var(--ha-font-weight-medium), line-height var(--ha-line-height-condensed)
-//          (was hardcoded 18px/500). Only font properties changed; layout/spacing
-//          properties (margin, padding, structure) left untouched per scope.
-// v0.0.12: Add font-family: var(--ha-font-family-body, inherit) to :host (verified
-//          variable name from ha-control-select-menu.ts). Dial center number now
-//          passes .formatOptions to ha-big-number (minimumFractionDigits/
-//          maximumFractionDigits computed from target_temp_step, exact port of
-//          ha-state-control-climate-temperature.ts _renderTarget) so whole-number
-//          targets show the correct decimal (e.g. "21,0") instead of dropping it.
-// v0.0.11: Full dial rewrite against verified HA source (ha-control-circular-slider.ts,
-//          state-control-circular-slider-style.ts, ha-big-number.ts,
-//          ha-outlined-icon-button.ts, state_color.ts, svg-arc.ts, css-variables.ts):
-//          - Real geometry: 270° sweep, 145 radius, 320 viewBox, 135° group rotation
-//            (previous 300°/210° values were an unverified approximation)
-//          - Target dot is now the real technique: a zero-length round-linecap
-//            stroke segment positioned via stroke-dasharray, not a drawn circle
-//          - Added the current-temperature marker on the ring (8px, primary-text-color,
-//            50% opacity) — previously missing entirely
-//          - Arc now layers clear/colored/active segments exactly as source does,
-//            instead of a single flat fill path
-//          - Colors now resolve via the real CSS custom property chain
-//          (--state-climate-<mode>-color etc, ported chStateColorCss/
-//          chDomainColorProperties/chComputeCssVariable) instead of hardcoded hex —
-//          matches any HA theme automatically since we run in the same frontend.
-//          [Note] the active/inactive fallback tier of this chain uses a
-//          simplified heuristic (mode !== 'off') since state_active.ts was not
-//          verified this session; low practical impact since HA themes define
-//          --state-climate-<mode>-color directly for standard hvac modes.
-//          - Center number now uses the real <ha-big-number> element (exact font
-//            sizing/weight/decimal handling) instead of manual whole/decimal split
-//          - +/- controls now use the real <ha-outlined-icon-button> element,
-//            48x48px, positioned absolutely inside the dial (bottom:10px) instead
-//            of a separate custom circle-button row below the dial
-//          - Drag interaction ported from the real _getPercentageFromEvent /
-//            _findActiveSlider formulas instead of re-derived angle math
-//          - Dual (heat_cool) mode always colors low=heat-color/high=cool-color
-//            regardless of current mode, matching source; added persistent
-//            _selectedRangeTarget so the step buttons act on whichever handle was
-//            last dragged (default 'low')
-//          [Simplification, disclosed] per-arc secondary current-temperature
-//          marker (the subtle --clear-background-color one drawn again inside
-//          each arc group) was not ported — only the single shared top-level
-//          marker was, which is the visually significant one users identified.
-//          [Simplification, disclosed] responsive breakpoint sizing (xs/sm/md/lg
-//          font-size swaps tied to container width) was not ported — out of
-//          scope for this pass, current sizing is fixed.
-// v0.0.10: Fix .header justify-content (space-between -> flex-end) so the
-//          more-info button stays pinned top-right when the name is hidden,
-//          instead of jumping to the left as the only flex child. Fix the name
-//          row toggle vertical alignment: give it an invisible label spacer
-//          matching the real "Name (optional)" label's height, plus a 40px
-//          control row matching the text input's height, so the switch centers
-//          on the input box itself rather than the whole label+input block.
-// v0.0.9: Add show_more_info_button config key (default true) with editor toggle.
-//         Display section in editor no longer gated on temperature/humidity
-//         capability existing, since the more-info toggle is always available.
-//         Header row (name + more-info button) is now omitted entirely when both
-//         are hidden, so the dial moves up to fill the freed space.
-// v0.0.8: Preset/Fan/Swing mode icons now use HA's real icon resolution instead
-//         of a generic dot fallback. Ported directly from verified HA source
-//         (src/data/icons.ts: attributeIcon/getIconFromTranslations/
-//         getIconFromRange) — same WebSocket data ('frontend/get_icons') and
-//         same platform-translation-key + entity-component-icon lookup order
-//         ha-attribute-icon itself uses. Uses hass.callWS (standard on any
-//         custom card) in place of the internal-only callWS util, and
-//         hass.config.components as a simplified load-check in place of the
-//         source's isComponentLoaded/atLeastVersion version gate (that gate
-//         exists only to protect against very old HA servers lacking this WS
-//         command; omitting it doesn't change output on any current HA version).
-//         Results cached per platform/domain, same as source.
-// v0.0.7: Add show_entity_name_fallback config key (default true) controlling
-//         whether the header falls back to the entity's friendly name when the
-//         Name field is blank. Editor: Name field + new toggle combined into a
-//         single grid row (.name-toggle-grid, same named-grid-class method used
-//         throughout chrono-compass-card.js), toggle right-aligned to match the
-//         switches in the rows below. No label on the toggle itself.
-// v0.0.6: Editor now only shows a toggle for a capability the selected entity
-//         actually supports (current temperature/humidity, Mode/Preset/Fan/Swing)
-//         instead of always showing all of them; renamed config keys
-//         show_*_row -> show_*_button and editor labels "row" -> "button" to
-//         match; single-readout layout now centers instead of using a half grid
-//         cell when only current temperature or only current humidity is shown
-// v0.0.5: Rebuilt Mode/Preset/Fan/Swing rows against verified HA source for the
-//         MORE-INFO DIALOG specifically (more-info-climate.ts), not the card-feature
-//         system used earlier — these are different component trees. Confirmed from
-//         source: no hide-label, no show-arrow on ha-control-select-menu; row
-//         container replicates ha-more-info-control-select-container.ts exactly
-//         (flex-wrap row, 120-160px per item, gap var(--ha-space-3), 300px max-width
-//         at 4 items) — this was the actual cause of "too wide"; Mode row now uses
-//         the real per-mode icon mapping from data/climate.ts
-//         (CLIMATE_HVAC_MODE_ICONS) and real HVAC_MODES ordering, both mode label
-//         and icon change dynamically with current mode, matching source exactly
-// v0.0.4: Replace hand-built ch-feature-picker with HA's real native
-//         <ha-control-select-menu> component (confirmed from HA frontend source:
-//         hui-mode-select-card-feature-base.ts) — guarantees identical rendering
-//         since it's the same element HA itself uses. Row icons now match source
-//         exactly (mdi:thermostat / mdi:tune-variant / mdi:fan / mdi:arrow-oscillating).
-//         Per source, Mode row shows no per-option icons; Preset/Fan/Swing rows
-//         use a generic dot icon fallback (native uses ha-attribute-icon, which
-//         depends on HA's internal icon-translation data we don't have access to)
-// v0.0.3: Add 28px border-radius to ha-card; reduce ch-feature-picker button
-//         padding/gap/font size — buttons were too wide/bulky compared to native
-// v0.0.2: Replace ch-button-toggle-group (all-options segmented row) with
-//         ch-feature-picker (single button showing current icon+value, opens a
-//         dropdown popup listing all options — matches native HA behavior);
-//         Mode/Preset/Fan mode/Swing mode rows now laid out in a 2-column grid
-// v0.0.1: Initial release — dial with drag-to-set interaction (single and dual/heat_cool
-//         target modes), current temperature/humidity readouts, capability-detected
-//         Mode/Preset/Fan mode/Swing mode button rows read directly from entity
-//         attributes and wired to HA climate services, heat/cool/idle color states,
-//         full visual editor with per-row visibility toggles
+// v1.2.42: [User-measured] .current padding-top 12->20px, margin-bottom
+//          26->18px (net unchanged) - shifts block down 8px.
+// v1.2.41: [User-measured] Removed .ch-controls-container's own bottom
+//          padding/margin - was doubling with ha-card's automatic padding.
+// v1.2.40: Removed height:100% from .card-content (circular now that
+//          getGridOptions() no longer forces ha-card's height).
+// v1.2.39: Deleted getGridOptions() entirely - project rule: card must be
+//          container-agnostic. Also fixes an edit-mode clipping bug.
+// v1.2.38: ha-card gets height/width:100% (fixes edit-mode overflow);
+//          .content->.card-content; readouts match more-info-climate.ts;
+//          .container/.ch-controls-container wrapped in shared .controls.
+// v1.2.37: .readouts padding-top 0->12px; fixed .more-info nesting
+//          regression from v1.2.33.
+// v1.2.36: [User-measured] .container margin-bottom 14->16px,
+//          .ch-controls-container margin-bottom 6->4px (net-zero swap).
+// v1.2.35: [User-measured] .readouts margin-bottom 40->26px, .container
+//          margin-bottom 0->14px, .ch-controls-container 0->6px.
+// v1.2.34: Added margin-bottom: var(--ha-space-10) to .readouts, matching
+//          more-info-climate.ts.
+// v1.2.33: Fixed title alignment: ha-card back to plain block, flex/
+//          align-items moved to new .content wrapper.
+// v1.2.32: Restored title to ha-card's built-in .header property, matching
+//          verified ha-card.ts source.
+// v1.2.31: Fixed ResizeObserver to match hui-thermostat-card.ts exactly:
+//          observes host itself, re-queries .container fresh each callback.
+// v1.2.30: Restored max-width dial-capping using native ResizeObserver
+//          (replacing CORS-blocked @lit-labs/observers).
+// v1.2.29: Fixed fatal load failure: @lit-labs/observers isn't served with
+//          CORS headers by unpkg; removed the import/ResizeController.
+// v1.2.28: Replaced hand-built arc/drag/color logic with the real
+//          <ha-state-control-climate-temperature> element directly,
+//          matching hui-thermostat-card.ts. Removed all dead dial code.
+// v1.2.27: Ported the real ResizeController mechanism (@lit-labs/observers)
+//          - measures .container height, applies as max-width on dial.
+// v1.2.26: Fixed dial sizing: native uses two nested elements (.container +
+//          a separate 320px-default inner control), not one; restructured.
+// v1.2.25: Fixed v1.2.24 regression: replaced aspect-ratio+flex:1 with the
+//          literal padding-top:100% technique from hui-thermostat-card.ts.
+// v1.2.24: Major rework separating dashboard-card infrastructure (from
+//          hui-thermostat-card.ts) from dialog-content styling
+//          (more-info-climate.ts): title, sizing, getGridOptions,
+//          touch-only dot interaction, responsive breakpoints, action glow.
+// v1.1.23: Off-state now hides the arc fill (was showing a duplicate grey
+//          ring); added full keyboard accessibility ported from source.
+// v1.1.22: Readouts block moved up 8px without affecting dial position.
+// v1.1.21: Unavailable-state handling now a verified port; added
+//          .disabled binding to Mode/Preset/Fan/Swing rows.
+// v1.1.20: chStateActive() rewritten as verified port of state_active.ts,
+//          scoped to the climate domain.
+// v1.1.19: Full source-review fix pass against
+//          ha-state-control-climate-temperature.ts: active-aware dual-mode
+//          colors, unit-based step fallback, debounced step buttons,
+//          colored dual-mode outline, unavailable handling, tap-to-select.
+// v1.0.18: Fixed +/- buttons triggering spurious arc drag: interaction now
+//          attached only to an invisible path tracing the ring, not the
+//          whole wrapper div.
+// v1.0.17: show_more_info_button default changed true->false.
+// v1.0.16: Fixed real-time updates: hass setter now calls requestUpdate().
+// v1.0.15: Card border-radius 28->12px; dial center label moved up 16px;
+//          feature buttons moved down 8px; fixed target-dot border color.
+// v0.0.14: Fixed title: now uses ha-card's built-in header property
+//          (real h1.card-header) instead of a hand-built element.
+// v0.0.13: Fixed .title and .readout-label/.readout-value font properties
+//          to match native source exactly.
+// v0.0.12: Added font-family to :host; dial center number now shows
+//          correct decimal (e.g. "21,0") via formatOptions.
+// v0.0.11: Full dial rewrite against verified HA source: real arc
+//          geometry, target dot technique, current-temp marker, real
+//          color-variable chain, ha-big-number/ha-outlined-icon-button.
+// v0.0.10: Fixed .header justify-content so more-info button stays
+//          pinned top-right when name is hidden; fixed toggle alignment.
+// v0.0.9: Added show_more_info_button config key; header row omitted
+//         entirely when both name and button are hidden.
+// v0.0.8: Preset/Fan/Swing icons now use HA's real icon resolution
+//         instead of a generic dot fallback.
+// v0.0.7: Added show_entity_name_fallback config key; combined Name
+//         field + toggle into one editor row.
+// v0.0.6: Editor now only shows toggles for capabilities the entity
+//         actually supports; renamed show_*_row -> show_*_button.
+// v0.0.5: Rebuilt Mode/Preset/Fan/Swing rows against more-info-climate.ts
+//         source (not the card-feature system) - fixed row width.
+// v0.0.4: Replaced hand-built button with HA's real
+//         <ha-control-select-menu> component.
+// v0.0.3: Added 28px border-radius to ha-card; reduced feature-picker
+//         button padding/gap/font size.
+// v0.0.2: Replaced segmented toggle group with single feature-picker
+//         button + dropdown; rows now in 2-column grid.
+// v0.0.1: Initial release: dial with drag-to-set, readouts,
+//         capability-detected Mode/Preset/Fan/Swing rows, visual editor.
 
 const CH_HVAC_MODE_LABELS = {
   off:       'Off',
