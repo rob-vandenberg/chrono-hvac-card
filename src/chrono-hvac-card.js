@@ -2,9 +2,28 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.4.56';
+const CARD_VERSION = '1.4.57';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.4.57: [User-directed] Renamed .card-content -> .hvac-content. The old
+//          name specifically matched ha-card.ts's internal trigger for its
+//          automatic conditional padding (16px flat, or header-aware
+//          negative-margin compensation) - deliberately not replicating
+//          that logic here, since the whole point of the rename is to stop
+//          HA from injecting its own spacing at all. Added explicit
+//          padding: var(--hvac-content-padding, 8px) on all sides - flat,
+//          no header-conditional logic, fully ours, narrower than HA's old
+//          16px default. Considered merging this wrapper into ha-card
+//          itself (matching chrono-slider-card's flatter structure) but
+//          rejected: that would put display:flex/align-items:center
+//          directly on ha-card, which breaks left-alignment of ha-card's
+//          own internal header (<h1 class="card-header">, rendered via the
+//          .header property, living in ha-card's own separate shadow DOM)
+//          - an already-diagnosed, previously-fixed bug from earlier in
+//          this project. chrono-slider-card avoids this because it renders
+//          its own .title element instead of using ha-card.header at all;
+//          we deliberately use ha-card.header (documented decision from
+//          the original transfer doc), so the wrapper stays necessary.
 // v1.4.56: [User-directed] Editor's "Show card border" toggle now displays
 //          checked whenever show_border is true OR undefined (only unchecked
 //          when explicitly false) - c.show_border !== false instead of
@@ -1259,7 +1278,7 @@ class ChronoHvacCard extends LitElement {
             <ha-icon icon="mdi:dots-vertical"></ha-icon>
           </ha-icon-button>
         ` : ''}
-        <div class="card-content">
+        <div class="hvac-content">
         ${showTemp || showHumidity ? html`
           <div class="readouts">
             ${showTemp ? html`
@@ -1319,7 +1338,7 @@ class ChronoHvacCard extends LitElement {
     ha-card.no-border {
       border-width: 0;
     }
-    .card-content {
+    .hvac-content {
       position: relative;
       width: 100%;
       display: flex;
@@ -1328,6 +1347,7 @@ class ChronoHvacCard extends LitElement {
       justify-content: space-between;
       overflow: hidden;
       box-sizing: border-box;
+      padding: var(--hvac-content-padding, 8px);
     }
     .more-info {
       position: absolute;
