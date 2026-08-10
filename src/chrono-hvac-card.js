@@ -2,9 +2,24 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.3.45';
+const CARD_VERSION = '1.3.46';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.3.46: Restructured the mode/fan/swing button row to follow the same
+//          pattern chrono-slider-card uses for its .favorites section:
+//          the wrapping row is now a direct child of a column-flex parent
+//          (.controls) instead of being nested inside its own row-flex
+//          wrapper (.ch-controls-container). That nested-row-in-row
+//          structure was the actual cause of the v1.3.45 min-width:auto
+//          issue reappearing as a 4-buttons-in-1-column bug - as a cross-
+//          axis child of a column flex parent, the row is no longer subject
+//          to the flexbox auto-minimum-size special case at all, verified
+//          against chrono-slider-card_1.8.80.js's own working .favorites
+//          implementation (ha-card > section.favorites, same relationship).
+//          Also renamed ch-controls-container/ch-controls-scroll (merged
+//          into one element) to .mode-buttons for a more intuitive name,
+//          matching .favorites' naming style. items-4/items-3/multiline
+//          column-forcing logic and all pixel values otherwise unchanged.
 // v1.3.45: Fixed mode/fan/swing buttons becoming unreachable on mobile.
 //          Root cause: .ch-controls-scroll (the button row) is a flex item
 //          of a row flex container (.ch-controls-container) and had no
@@ -1091,7 +1106,7 @@ class ChronoHvacCard extends LitElement {
     if (this._config.show_swing_button && swingModes.length) {
       featureRows.push(this._renderAttributeRow('Swing mode', 'swing_mode', swingModes, attrs.swing_mode, (v) => this._setSwingMode(v), featureRowsDisabled));
     }
-    const scrollClass = `ch-controls-scroll items-${featureRows.length}${featureRows.length >= 4 ? ' multiline' : ''}`;
+    const modeButtonsClass = `mode-buttons items-${featureRows.length}${featureRows.length >= 4 ? ' multiline' : ''}`;
 
     const showTemp = this._config.show_current_temperature && attrs.current_temperature !== undefined;
     const showHumidity = this._config.show_current_humidity && attrs.current_humidity !== undefined;
@@ -1133,10 +1148,8 @@ class ChronoHvacCard extends LitElement {
         </div>
 
         ${featureRows.length ? html`
-          <div class="ch-controls-container">
-            <div class="${scrollClass}">
-              ${featureRows}
-            </div>
+          <div class="${modeButtonsClass}">
+            ${featureRows}
           </div>
         ` : ''}
         </div>
@@ -1255,38 +1268,31 @@ class ChronoHvacCard extends LitElement {
     .container > * {
       padding: 8px;
     }
-    .ch-controls-container {
-      display: flex;
-      flex-direction: row;
-      justify-content: center;
-      flex: none;
-      width: 100%;
-      box-sizing: border-box;
-      padding: 0 12px 0 12px;
-    }
-    .ch-controls-scroll {
+    .mode-buttons {
       display: flex;
       flex-direction: row;
       justify-content: center;
       flex-wrap: wrap;
+      flex: none;
       gap: var(--ha-space-3, 12px);
-      margin: auto;
+      width: 100%;
+      max-width: 450px;
+      box-sizing: border-box;
+      padding: 0 12px 0 12px;
       overflow: auto;
       -ms-overflow-style: none;
       scrollbar-width: none;
       min-width: 0;
-      width: 100%;
-      max-width: 450px;
     }
-    .ch-controls-scroll::-webkit-scrollbar { display: none; }
-    .ch-controls-scroll > * {
+    .mode-buttons::-webkit-scrollbar { display: none; }
+    .mode-buttons > * {
       min-width: 120px;
       max-width: 160px;
       flex: none;
     }
-    .ch-controls-scroll.items-4 { max-width: 300px; }
-    .ch-controls-scroll.items-3 > * { max-width: 140px; }
-    .ch-controls-scroll.multiline > * { width: 140px; }
+    .mode-buttons.items-4 { max-width: 300px; }
+    .mode-buttons.items-3 > * { max-width: 140px; }
+    .mode-buttons.multiline > * { width: 140px; }
 
   `;
 }
