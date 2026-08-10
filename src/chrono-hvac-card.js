@@ -2,9 +2,24 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.3.49';
+const CARD_VERSION = '1.3.50';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.3.50: [User-directed, spec-verified] Fixed v1.3.49's grid not actually
+//          shrinking. Root cause, confirmed via CSS Working Group discussion:
+//          repeat(auto-fit, minmax(min,max)) decides column COUNT using the
+//          max argument only when that max is a definite length - with
+//          minmax(112px, 140px) (both definite), the count was decided using
+//          140px, identical to the old fixed-width behavior, so the 112px
+//          floor never actually applied. Fixed by changing the max argument
+//          to 1fr: minmax(112px, 1fr) - fr is explicitly not "definite" for
+//          this purpose (confirmed: "the fr value is ignored for repetition
+//          purposes"), so column count now uses the 112px min instead,
+//          giving genuine continuous shrink 140->112 before a column drops.
+//          Since 1fr would otherwise let a lone item stretch to fill an
+//          entire wide row, .mode-buttons > * now caps itself at
+//          max-width:140px with justify-self:center, capping visual growth
+//          while the track itself can still be wider.
 // v1.3.49: [User-directed] Replaced all per-item-count CSS (items-4,
 //          items-3, multiline) with a single universal rule that applies
 //          identically regardless of how many buttons are present (1, 2,
@@ -1303,7 +1318,7 @@ class ChronoHvacCard extends LitElement {
     }
     .mode-buttons {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(112px, 140px));
+      grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
       justify-content: center;
       flex: none;
       gap: var(--ha-space-3, 12px);
@@ -1317,7 +1332,8 @@ class ChronoHvacCard extends LitElement {
     .mode-buttons::-webkit-scrollbar { display: none; }
     .mode-buttons > * {
       min-width: 0;
-      max-width: none;
+      max-width: 140px;
+      justify-self: center;
     }
 
   `;
