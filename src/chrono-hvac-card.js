@@ -2,9 +2,10 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.5.66';
+const CARD_VERSION = '1.5.67';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.5.67: circle-slider: margin-top: 16px
 // v1.5.66: Condensed version history comments.
 // v1.5.65: Made card behave nicely inside UI editor.
 // v1.5.64: Fixed .circle-slider stretching to fill leftover vertical
@@ -850,7 +851,7 @@ class ChronoHvacCard extends LitElement {
       max-width: 100%;
       width: 100%;
       box-sizing: border-box;
-      margin-top: var(--circle-slider-margin-top, 25px);
+      margin-top: var(--circle-slider-margin-top, 16px);
       margin-bottom: var(--circle-slider-margin-bottom, 4px);
     }
     .circle-slider::before {
