@@ -2,9 +2,12 @@ import { LitElement, html, svg, css } from 'https://unpkg.com/lit@2.0.0/index.js
 import { live } from 'https://unpkg.com/lit@2.0.0/directives/live.js?module';
 
 // ─── Card Version ─────────────────────────────────────────────────────────────
-const CARD_VERSION = '1.5.67';
+const CARD_VERSION = '1.5.68';
 
 // ─── Card Version History ─────────────────────────────────────────────────────
+// v1.5.68: Added min-width to :host (283px) and .circle-slider (267px)
+//          to stop the dial's native +/- buttons from misbehaving below
+//          the width the user found they start to break.
 // v1.5.67: circle-slider: margin-top: 16px
 // v1.5.66: Condensed version history comments.
 // v1.5.65: Made card behave nicely inside UI editor.
@@ -767,6 +770,7 @@ class ChronoHvacCard extends LitElement {
       position: relative;
       height: 100%;
       max-width: 360px;
+      min-width: var(--host-min-width, 283px);
       margin: 0 auto;
       font-family: var(--ha-font-family-body, inherit);
     }
@@ -850,6 +854,7 @@ class ChronoHvacCard extends LitElement {
       overflow: hidden;
       max-width: 100%;
       width: 100%;
+      min-width: var(--circle-slider-min-width, 267px);
       box-sizing: border-box;
       margin-top: var(--circle-slider-margin-top, 16px);
       margin-bottom: var(--circle-slider-margin-bottom, 4px);
